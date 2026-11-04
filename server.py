@@ -399,7 +399,6 @@ BOARD_HTML = """
         @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.3; transform: scale(0.85); } 100% { opacity: 1; transform: scale(1); } }
         h1 { margin: 0; font-size: 19px; color: #fbbf24; letter-spacing: 2px; text-shadow: 0 0 12px rgba(251, 191, 36, 0.4); white-space: nowrap;}
         
-        /* 座標コントロールパネル (ヘッダーのグローバル領域に配置) */
         .location-controls { display: flex; gap: 4px; align-items: center; background: #0b0f19; padding: 4px 10px; border-radius: 6px; border: 1px solid #1f2937; }
         .location-controls input { width: 70px; background: #020617; border: 1px solid #374151; color: #fff; font-size: 12px; padding: 4px; border-radius: 3px; text-align: center; }
         .location-controls .btn-update { background: #0284c7; color: white; border: none; padding: 4px 8px; font-size: 11px; border-radius: 3px; cursor: pointer; font-weight: bold; }
@@ -449,7 +448,7 @@ BOARD_HTML = """
         .radar-label { position: absolute; font-size: 10px; color: #7dd3fc; background: rgba(2, 6, 23, 0.85); padding: 2px 4px; border: 1px solid rgba(56, 189, 248, 0.3); z-index: 16; transform: translate(8px, -10px); transition: all 1.5s ease-out; border-radius: 2px; }
         
         .other-flights-panel { background: #0b0f19; border: 2px solid #1f2937; border-radius: 6px; padding: 10px; flex-grow: 1; display: flex; flex-direction: column; overflow: hidden;}
-        .other-flight-item { background: #020617; border: 1px solid #1f2937; border-radius: 4px; padding: 8px; margin-bottom: 6px; display: flex; flex-direction: column; gap: 4px; font-size: 11px;}
+        .other-flight-item { background: #020617; border: 1px solid #1f2937; border-radius: 4px; padding: 8px; margin-bottom: 6px; display: flex; flex-direction: column; font-size: 11px;}
         .standby-board { text-align: center; background: #0b0f19; border: 2px solid #1f2937; border-radius: 6px; padding: 20px; flex-grow: 1; display: flex; flex-direction: column; justify-content: center; }
     </style>
 </head>
@@ -489,6 +488,7 @@ BOARD_HTML = """
         <div class="right-sidebar">
             <div class="radar-panel">
                 <div class="radar-title">📡 ターミナルレーダー</div>
+                
                 <div class="radar-screen" id="radar-screen">
                     <div class="radar-grid-rings"></div>
                     <div class="radar-line-h"></div>
@@ -500,10 +500,10 @@ BOARD_HTML = """
             </div>
 
             <div class="other-flights-panel">
-                <div style="font-size: 11px; color: #9ca3af; font-weight: bold; border-bottom: 1px solid #1f2937; padding-bottom: 4px;">
+                <div style="font-size: 11px; color: #9ca3af; font-weight: bold; border-bottom: 1px solid #1f2937; padding-bottom: 4px; margin-bottom: 6px;">
                     ✈ 周辺通過機 近い順 (<span id="other-count">0</span>機)
                 </div>
-                <div id="other-flights-list" style="overflow-y: auto; margin-top: 6px;"></div>
+                <div id="other-flights-list" style="overflow-y: auto;"></div>
             </div>
         </div>
     </div>
@@ -514,14 +514,12 @@ BOARD_HTML = """
         let lon = urlParams.get('lon') || "135.4382";
         const bearings = urlParams.getAll('b').join(',');
         
-        // 入力フォームに現在の座標をセット
         document.getElementById('board-lat').value = lat;
         document.getElementById('board-lon').value = lon;
 
         setInterval(() => { document.getElementById('clock').innerText = new Date().toTimeString().split(' ')[0]; }, 1000);
         let lastRoutes = {};
 
-        // 座標更新処理
         function updateLocation() {
             lat = document.getElementById('board-lat').value;
             lon = document.getElementById('board-lon').value;
@@ -531,13 +529,11 @@ BOARD_HTML = """
             newUrl.searchParams.set('lon', lon);
             window.history.pushState({}, '', newUrl);
             
-            // データを強制リセットして再取得
             document.getElementById('board-title').innerText = `🔄 RELOADING...`;
             document.getElementById('provider-status').innerHTML = `新しい観測地のデータを取得中...`;
             update();
         }
 
-        // GPS再取得処理
         function getBoardLocation() {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition((pos) => {
@@ -631,15 +627,30 @@ BOARD_HTML = """
                     `).join('');
                 }
 
-                otherList.innerHTML = data.other_flights.map(f => `
+                otherList.innerHTML = data.other_flights.map(f => {
+                    let vrSign = f.vr > 0 ? "▲" : (f.vr < 0 ? "▼" : "―");
+                    let holdBadge = f.is_holding ? ` <span style="color:#f59e0b; font-size:9px;">[HOLD]</span>` : '';
+                    return `
                     <div class="other-flight-item">
-                        <div style="display:flex; justify-content:space-between;">
-                            <div><span class="other-badge" style="background:${f.color};">${f.airline_code}</span> <span style="color:#f8fafc;font-weight:bold;">${f.callsign}</span></div>
-                            <div style="color:#e2e8f0;font-weight:bold;">${f.distance}km / ${f.compass}</div>
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <span class="other-badge" style="background:${f.color};">${f.airline_code}</span> 
+                                <span style="color:#f8fafc;font-weight:bold;">${f.callsign}</span>
+                                <span style="color:#9ca3af;font-size:10px;margin-left:4px;">${f.airline}</span>
+                                ${holdBadge}
+                            </div>
+                            <div style="color:#e2e8f0;font-weight:bold;font-size:10px;">${f.distance}km / ${f.compass}</div>
                         </div>
-                        <div style="color:#38bdf8;font-weight:bold;font-family:monospace; margin-top:2px;">✈ ${f.route}</div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+                            <div style="color:#38bdf8;font-weight:bold;font-family:monospace;font-size:12px;">✈ ${f.route}</div>
+                            <div style="color:#cbd5e1;font-size:10px;text-align:right;">
+                                ALT: <span style="color:#fbbf24;font-weight:bold;">${f.alt}ft</span> ${vrSign} <br>
+                                SPD: <span style="color:#fbbf24;font-weight:bold;">${f.gs}kt</span>
+                            </div>
+                        </div>
                     </div>
-                `).join('');
+                    `;
+                }).join('');
 
             } catch (e) { console.error(e); }
         }
