@@ -145,9 +145,9 @@ def deg_to_compass_16(deg: float) -> str:
     return arr[(val % 16)]
 
 def get_nearest_airport(lat: float, lon: float) -> Tuple[str, str, float, float]:
-    nearest_code = "ITM"
-    nearest_name = "伊丹"
-    nearest_lat, nearest_lon = ITM_LAT, ITM_LON
+    nearest_code = ""
+    nearest_name = ""
+    nearest_lat, nearest_lon = 0.0, 0.0
     min_dist = float('inf')
     
     for code, (a_lat, a_lon, name) in MAJOR_AIRPORTS.items():
@@ -623,7 +623,7 @@ async def api_flights(lat: float = Query(...), lon: float = Query(...), bearings
 
 if __name__ == "__main__":
     print("=" * 65)
-    print(" ✈️  ユニバーサル フライトボード サーバー起動！ (ポート: 8000)")
+    print(" ✈️  ユニバーサル フライトボード サーバー起動！ (ポート: 8001)")
     print(" 🌐 ブラウザでアクセス: http://localhost:8001")
     print("=" * 65)
     uvicorn.run(app, host="0.0.0.0", port=8001)
