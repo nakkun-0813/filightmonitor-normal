@@ -198,7 +198,6 @@ class UniversalFlightEngine:
 
     def get_weather(self, lat: float, lon: float) -> Dict[str, str]:
         now = time.time()
-        # 観測地が変更された場合や、一定時間経過後に天気を再取得
         dist_moved, _, _ = calc_geo_metrics(self.current_home[0], self.current_home[1], lat, lon)
         if (now - self.last_weather_fetch) < 600 and dist_moved < 1.0: 
             return self.cached_weather
@@ -220,7 +219,6 @@ class UniversalFlightEngine:
         return self.cached_weather
 
     def get_flights(self, home_lat: float, home_lon: float, visible_bearings: List[str]):
-        # 観測地が変わったらトラッカーをリセット
         dist_moved, _, _ = calc_geo_metrics(self.current_home[0], self.current_home[1], home_lat, home_lon)
         if dist_moved > 1.0:
             self.tracked_flights = {}
@@ -254,7 +252,6 @@ class UniversalFlightEngine:
                 dist_home, bearing_home, _ = calc_geo_metrics(home_lat, home_lon, lat, lon, alt_baro)
                 compass_home = deg_to_compass_code(bearing_home)
                 
-                # 最寄り空港との位置関係
                 dist_apt, _, _ = calc_geo_metrics(lat, lon, apt_lat, apt_lon, alt_baro)
                 
                 api_route = self.resolver.lookup_api(cs)
@@ -396,14 +393,24 @@ BOARD_HTML = """
     <title>UNIVERSAL FLIGHT BOARD</title>
     <style>
         body { background-color: #030712; color: #f1f5f9; font-family: 'Courier New', Courier, monospace, sans-serif; margin: 0; padding: 12px; height: 100vh; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; }
-        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1f2937; padding-bottom: 8px; margin-bottom: 12px; flex-shrink: 0; }
-        .header-title-area { display: flex; align-items: center; gap: 12px; }
-        .live-dot { width: 10px; height: 10px; background-color: #10b981; border-radius: 50%; box-shadow: 0 0 10px #10b981; animation: pulse 1.6s infinite; }
+        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1f2937; padding-bottom: 8px; margin-bottom: 12px; flex-shrink: 0; gap: 10px; flex-wrap: wrap;}
+        .header-left { display: flex; align-items: center; gap: 12px; }
+        .live-dot { width: 10px; height: 10px; background-color: #10b981; border-radius: 50%; box-shadow: 0 0 10px #10b981; animation: pulse 1.6s infinite; flex-shrink: 0;}
         @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.3; transform: scale(0.85); } 100% { opacity: 1; transform: scale(1); } }
-        h1 { margin: 0; font-size: 19px; color: #fbbf24; letter-spacing: 2px; text-shadow: 0 0 12px rgba(251, 191, 36, 0.4); }
-        .status { font-size: 12px; color: #6b7280; }
+        h1 { margin: 0; font-size: 19px; color: #fbbf24; letter-spacing: 2px; text-shadow: 0 0 12px rgba(251, 191, 36, 0.4); white-space: nowrap;}
+        
+        /* 座標コントロールパネル (ヘッダーのグローバル領域に配置) */
+        .location-controls { display: flex; gap: 4px; align-items: center; background: #0b0f19; padding: 4px 10px; border-radius: 6px; border: 1px solid #1f2937; }
+        .location-controls input { width: 70px; background: #020617; border: 1px solid #374151; color: #fff; font-size: 12px; padding: 4px; border-radius: 3px; text-align: center; }
+        .location-controls .btn-update { background: #0284c7; color: white; border: none; padding: 4px 8px; font-size: 11px; border-radius: 3px; cursor: pointer; font-weight: bold; }
+        .location-controls .btn-update:hover { background: #0369a1; }
+        .location-controls .btn-gps { background: #059669; color: white; border: none; padding: 4px 6px; font-size: 11px; border-radius: 3px; cursor: pointer; }
+        
+        .header-right { display: flex; align-items: center; gap: 15px; }
         .weather-panel { display: flex; gap: 14px; background: rgba(17, 24, 39, 0.6); padding: 6px 12px; border-radius: 6px; border: 1px solid #1f2937; font-size: 13px; color: #93c5fd; font-weight: bold; }
         .weather-item span { color: #e2e8f0; margin-left: 4px; }
+        .status { font-size: 12px; color: #6b7280; }
+        
         .main-layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(340px, 1fr); gap: 16px; flex-grow: 1; min-height: 0; }
         .left-column { display: flex; flex-direction: column; gap: 12px; min-height: 0; height: 100%; overflow-y: auto; }
         .right-sidebar { display: flex; flex-direction: column; gap: 12px; min-height: 0; height: 100%; }
@@ -428,13 +435,6 @@ BOARD_HTML = """
         .radar-panel { background: #0b0f19; border: 2px solid #1f2937; border-radius: 6px; padding: 14px; display: flex; flex-direction: column; align-items: center; box-shadow: 0 8px 20px rgba(0,0,0,0.7); flex-shrink: 0; }
         .radar-title { font-size: 12px; color: #38bdf8; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #1f2937; padding-bottom: 4px; width: 100%; text-align: center; }
         
-        /* 座標コントロールパネル (NEW) */
-        .location-controls { display: flex; gap: 4px; margin-bottom: 12px; width: 100%; justify-content: center; }
-        .location-controls input { width: 65px; background: #020617; border: 1px solid #374151; color: #fff; font-size: 11px; padding: 4px; border-radius: 3px; text-align: center; }
-        .location-controls .btn-update { background: #0284c7; color: white; border: none; padding: 4px 8px; font-size: 11px; border-radius: 3px; cursor: pointer; font-weight: bold; }
-        .location-controls .btn-update:hover { background: #0369a1; }
-        .location-controls .btn-gps { background: #059669; color: white; border: none; padding: 4px 6px; font-size: 11px; border-radius: 3px; cursor: pointer; }
-        
         .radar-screen { width: 85%; max-width: 360px; min-width: 250px; aspect-ratio: 1 / 1; background: radial-gradient(circle at center, #002b4d 0%, #000a14 70%); border: 3px solid #0f172a; border-radius: 50%; position: relative; overflow: hidden; box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.9), 0 0 10px rgba(56, 189, 248, 0.2); }
         .radar-grid-rings { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 50%; background-image: repeating-radial-gradient(transparent, transparent 15%, rgba(56, 189, 248, 0.15) 15.5%, transparent 16%); }
         .radar-line-h { position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: rgba(56, 189, 248, 0.25); }
@@ -455,15 +455,27 @@ BOARD_HTML = """
 </head>
 <body>
     <header>
-        <div class="header-title-area">
+        <div class="header-left">
             <div class="live-dot"></div>
             <div>
                 <h1 id="board-title">UNIVERSAL FLIGHT BOARD</h1>
                 <div class="status" id="provider-status">スキャンを準備中...</div>
             </div>
         </div>
-        <div class="weather-panel" id="weather-panel"><div class="weather-item">🌧️ 取得中...</div></div>
-        <div class="status" id="clock" style="font-size: 18px; color: #fbbf24; font-weight: bold;">--:--:--</div>
+        
+        <!-- グローバル座標コントロール -->
+        <div class="location-controls">
+            <span style="font-size: 11px; color:#9ca3af; font-weight:bold;">観測地:</span>
+            <input type="text" id="board-lat" placeholder="緯度">
+            <input type="text" id="board-lon" placeholder="経度">
+            <button class="btn-update" onclick="updateLocation()">更新</button>
+            <button class="btn-gps" onclick="getBoardLocation()" title="現在地を取得">📍</button>
+        </div>
+
+        <div class="header-right">
+            <div class="weather-panel" id="weather-panel"><div class="weather-item">🌧️ 取得中...</div></div>
+            <div class="status" id="clock" style="font-size: 18px; color: #fbbf24; font-weight: bold;">--:--:--</div>
+        </div>
     </header>
 
     <div class="main-layout">
@@ -477,15 +489,6 @@ BOARD_HTML = """
         <div class="right-sidebar">
             <div class="radar-panel">
                 <div class="radar-title">📡 ターミナルレーダー</div>
-                
-                <!-- NEW: レーダー画面上の座標入力パネル -->
-                <div class="location-controls">
-                    <input type="text" id="board-lat" placeholder="緯度">
-                    <input type="text" id="board-lon" placeholder="経度">
-                    <button class="btn-update" onclick="updateLocation()">更新</button>
-                    <button class="btn-gps" onclick="getBoardLocation()" title="現在地を取得">📍</button>
-                </div>
-
                 <div class="radar-screen" id="radar-screen">
                     <div class="radar-grid-rings"></div>
                     <div class="radar-line-h"></div>
@@ -523,13 +526,14 @@ BOARD_HTML = """
             lat = document.getElementById('board-lat').value;
             lon = document.getElementById('board-lon').value;
             
-            // URLバーを書き換えてブックマーク可能にする（ページリロードはさせない）
             let newUrl = new URL(window.location);
             newUrl.searchParams.set('lat', lat);
             newUrl.searchParams.set('lon', lon);
             window.history.pushState({}, '', newUrl);
             
-            // 即座にデータを再取得
+            // データを強制リセットして再取得
+            document.getElementById('board-title').innerText = `🔄 RELOADING...`;
+            document.getElementById('provider-status').innerHTML = `新しい観測地のデータを取得中...`;
             update();
         }
 
@@ -537,8 +541,8 @@ BOARD_HTML = """
         function getBoardLocation() {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition((pos) => {
-                    document.getElementById('board-lat').value = pos.coords.latitude;
-                    document.getElementById('board-lon').value = pos.coords.longitude;
+                    document.getElementById('board-lat').value = pos.coords.latitude.toFixed(4);
+                    document.getElementById('board-lon').value = pos.coords.longitude.toFixed(4);
                     updateLocation();
                 }, () => alert("GPSの取得に失敗しました。"));
             }
