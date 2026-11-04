@@ -1,0 +1,19 @@
+{
+  "home_lat": 35.58048740844092,
+  "home_lon": 139.78535778325167,
+  "target_airport": {
+    "icao": "RJTT",
+    "iata": "HND",
+    "name": "TOKYO/HANEDA",
+    "lat": 35.5494,
+    "lon": 139.7798,
+    "start_h": 0,
+    "end_h": 24
+  },
+  "visible_bearings": [
+    "SE",
+    "S",
+    "SW"
+  ],
+  "search_radius_nm": 15
+}
