@@ -198,8 +198,11 @@ class UniversalFlightEngine:
 
     def get_weather(self, lat: float, lon: float) -> Dict[str, str]:
         now = time.time()
-        # 観測地（セットアップで入力したlat, lon）の天気を正確に取得
-        if (now - self.last_weather_fetch) < 600: return self.cached_weather
+        # 観測地が変更された場合や、一定時間経過後に天気を再取得
+        dist_moved, _, _ = calc_geo_metrics(self.current_home[0], self.current_home[1], lat, lon)
+        if (now - self.last_weather_fetch) < 600 and dist_moved < 1.0: 
+            return self.cached_weather
+            
         try:
             url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&timezone=Asia%2FTokyo"
             r = self.session.get(url, timeout=2.0)
@@ -222,10 +225,9 @@ class UniversalFlightEngine:
         if dist_moved > 1.0:
             self.tracked_flights = {}
             self.current_home = (home_lat, home_lon)
-            self.last_weather_fetch = 0.0 
 
         apt_code, apt_name, apt_lat, apt_lon = get_nearest_airport(home_lat, home_lon)
-        weather_data = self.get_weather(home_lat, home_lon) # 緯度経度からピンポイント天気を取得
+        weather_data = self.get_weather(home_lat, home_lon)
         current_time = time.time()
         
         raw_list = None
@@ -258,7 +260,6 @@ class UniversalFlightEngine:
                 api_route = self.resolver.lookup_api(cs)
                 is_target_apt = False
                 
-                # 推測ルートに最寄り空港が含まれるか、空港至近で高度が低い便は発着機とみなす
                 if api_route and apt_code in api_route:
                     is_target_apt = True
                 elif dist_apt <= 15.0 and alt_baro <= 5500:
@@ -426,6 +427,14 @@ BOARD_HTML = """
         /* レーダーデザイン */
         .radar-panel { background: #0b0f19; border: 2px solid #1f2937; border-radius: 6px; padding: 14px; display: flex; flex-direction: column; align-items: center; box-shadow: 0 8px 20px rgba(0,0,0,0.7); flex-shrink: 0; }
         .radar-title { font-size: 12px; color: #38bdf8; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #1f2937; padding-bottom: 4px; width: 100%; text-align: center; }
+        
+        /* 座標コントロールパネル (NEW) */
+        .location-controls { display: flex; gap: 4px; margin-bottom: 12px; width: 100%; justify-content: center; }
+        .location-controls input { width: 65px; background: #020617; border: 1px solid #374151; color: #fff; font-size: 11px; padding: 4px; border-radius: 3px; text-align: center; }
+        .location-controls .btn-update { background: #0284c7; color: white; border: none; padding: 4px 8px; font-size: 11px; border-radius: 3px; cursor: pointer; font-weight: bold; }
+        .location-controls .btn-update:hover { background: #0369a1; }
+        .location-controls .btn-gps { background: #059669; color: white; border: none; padding: 4px 6px; font-size: 11px; border-radius: 3px; cursor: pointer; }
+        
         .radar-screen { width: 85%; max-width: 360px; min-width: 250px; aspect-ratio: 1 / 1; background: radial-gradient(circle at center, #002b4d 0%, #000a14 70%); border: 3px solid #0f172a; border-radius: 50%; position: relative; overflow: hidden; box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.9), 0 0 10px rgba(56, 189, 248, 0.2); }
         .radar-grid-rings { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 50%; background-image: repeating-radial-gradient(transparent, transparent 15%, rgba(56, 189, 248, 0.15) 15.5%, transparent 16%); }
         .radar-line-h { position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: rgba(56, 189, 248, 0.25); }
@@ -468,6 +477,15 @@ BOARD_HTML = """
         <div class="right-sidebar">
             <div class="radar-panel">
                 <div class="radar-title">📡 ターミナルレーダー</div>
+                
+                <!-- NEW: レーダー画面上の座標入力パネル -->
+                <div class="location-controls">
+                    <input type="text" id="board-lat" placeholder="緯度">
+                    <input type="text" id="board-lon" placeholder="経度">
+                    <button class="btn-update" onclick="updateLocation()">更新</button>
+                    <button class="btn-gps" onclick="getBoardLocation()" title="現在地を取得">📍</button>
+                </div>
+
                 <div class="radar-screen" id="radar-screen">
                     <div class="radar-grid-rings"></div>
                     <div class="radar-line-h"></div>
@@ -489,12 +507,42 @@ BOARD_HTML = """
 
     <script>
         const urlParams = new URLSearchParams(window.location.search);
-        const lat = urlParams.get('lat') || "34.7855";
-        const lon = urlParams.get('lon') || "135.4382";
+        let lat = urlParams.get('lat') || "34.7855";
+        let lon = urlParams.get('lon') || "135.4382";
         const bearings = urlParams.getAll('b').join(',');
         
+        // 入力フォームに現在の座標をセット
+        document.getElementById('board-lat').value = lat;
+        document.getElementById('board-lon').value = lon;
+
         setInterval(() => { document.getElementById('clock').innerText = new Date().toTimeString().split(' ')[0]; }, 1000);
         let lastRoutes = {};
+
+        // 座標更新処理
+        function updateLocation() {
+            lat = document.getElementById('board-lat').value;
+            lon = document.getElementById('board-lon').value;
+            
+            // URLバーを書き換えてブックマーク可能にする（ページリロードはさせない）
+            let newUrl = new URL(window.location);
+            newUrl.searchParams.set('lat', lat);
+            newUrl.searchParams.set('lon', lon);
+            window.history.pushState({}, '', newUrl);
+            
+            // 即座にデータを再取得
+            update();
+        }
+
+        // GPS再取得処理
+        function getBoardLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition((pos) => {
+                    document.getElementById('board-lat').value = pos.coords.latitude;
+                    document.getElementById('board-lon').value = pos.coords.longitude;
+                    updateLocation();
+                }, () => alert("GPSの取得に失敗しました。"));
+            }
+        }
 
         function renderFlap(text, id) {
             let padded = text.padEnd(12, ' ').slice(0, 12);
