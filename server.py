@@ -12,10 +12,10 @@ import uvicorn
 # 設定パラメータ（ベース）
 # ==============================================================================
 SEARCH_RADIUS_NM = 12       # 探索半径 (海里: 約22.2km)
-FLIGHT_HOLD_SEC = 45.0      # ADS-B通信途絶後、機体情報を保持し続ける秒数
+FLIGHT_HOLD_SEC = 120.0     # ADS-B通信途絶後、機体情報を保持し続ける秒数 (45秒→120秒へ延長)
 
 # ==============================================================================
-# 日本全国の空港マスタ (最寄り空港自動判定用) - 約80空港網羅
+# 日本全国の空港マスタ (最寄り空港自動判定用)
 # ==============================================================================
 MAJOR_AIRPORTS = {
     # 北海道
@@ -262,6 +262,16 @@ class UniversalFlightEngine:
                 elif dist_apt <= 15.0 and alt_baro <= 5500:
                     is_target_apt = True
 
+                in_window = (compass_home in visible_bearings) if visible_bearings else True
+
+                # ==============================================================
+                # 🎯 STICKY（張り付き）ロジック: 一度捕捉した機体は条件から外れても維持する
+                # ==============================================================
+                prev_f = self.tracked_flights.get(cs)
+                if prev_f:
+                    is_target_apt = is_target_apt or prev_f.get("is_target", False)
+                    in_window = in_window or prev_f.get("in_window", False)
+
                 phase = "通過・周辺便"
                 if is_target_apt:
                     if alt_baro <= 3500 and vr > 150: phase = f"{apt_name} 離陸・上昇"
@@ -285,7 +295,7 @@ class UniversalFlightEngine:
                     "route": route_str, "phase": phase, "model": AIRCRAFT_MAP.get(raw.get("t", ""), raw.get("t", "Aircraft")),
                     "alt": alt_baro, "vr": vr, "gs": gs, "distance": round(dist_home, 1), "compass": COMPASS_MAP.get(compass_home, compass_home),
                     "bearing": bearing_home, "is_target": is_target_apt,
-                    "in_window": (compass_home in visible_bearings) if visible_bearings else True,
+                    "in_window": in_window,
                     "last_seen": current_time
                 }
 
