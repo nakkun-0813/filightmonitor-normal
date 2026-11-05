@@ -1,22 +1,19 @@
 import time
 import math
-import re
-import requests
-import asyncio
-from datetime import datetime
+import httpx
 from typing import List, Optional, Dict, Tuple
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse
 import uvicorn
 
 # ==============================================================================
-# 設定パラメータ（ベース）
+# 設定パラメータ
 # ==============================================================================
-SEARCH_RADIUS_NM = 12       # 探索半径 (海里: 約22.2km)
-FLIGHT_HOLD_SEC = 120.0     # 通信途絶後、機体情報を保持し続ける秒数 (120秒)
+SEARCH_RADIUS_NM = 15       # 探索半径 (海里: 約27.7kmに拡大)
+FLIGHT_HOLD_SEC = 90.0      # 保持時間 (秒)
 
 # ==============================================================================
-# 日本全国の空港マスタ (最寄り空港自動判定用)
+# 全国主要空港マスタ
 # ==============================================================================
 MAJOR_AIRPORTS = {
     "CTS": (42.7752, 141.6923, "新千歳"), "OKD": (43.1167, 141.3833, "丘珠"),
@@ -114,8 +111,7 @@ def deg_to_compass_16(deg: float) -> str:
     return arr[(val % 16)]
 
 def get_nearest_airport(lat: float, lon: float) -> Tuple[str, str, float, float]:
-    nearest_code = ""
-    nearest_name = ""
+    nearest_code, nearest_name = "", ""
     nearest_lat, nearest_lon = 0.0, 0.0
     min_dist = float('inf')
     for code, (a_lat, a_lon, name) in MAJOR_AIRPORTS.items():
@@ -126,145 +122,140 @@ def get_nearest_airport(lat: float, lon: float) -> Tuple[str, str, float, float]
     return nearest_code, nearest_name, nearest_lat, nearest_lon
 
 # ==============================================================================
-# 非同期バックグラウンド取得エンジン（通信詰まり完全防止）
+# 非同期フライトエンジン
 # ==============================================================================
-class SmartRouteResolver:
+class UniversalFlightEngine:
     def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
         self.route_cache = {}
+        self.tracked_flights: Dict[str, Dict] = {}
+        self.cached_weather = {"temp": "--", "humidity": "--", "condition": "--", "wind_speed": "--", "wind_dir": "--"}
+        self.last_weather_fetch = 0.0
+        self.last_api_fetch = 0.0
+        self.headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        }
 
-    def lookup_api(self, callsign: str) -> Optional[str]:
-        if callsign in self.route_cache: return self.route_cache[callsign]
+    async def lookup_route(self, client: httpx.AsyncClient, callsign: str) -> Optional[str]:
+        if callsign in self.route_cache:
+            return self.route_cache[callsign]
         try:
-            r = self.session.get(f"https://api.adsbdb.com/v0/callsign/{callsign}", timeout=2.0)
+            r = await client.get(f"https://api.adsbdb.com/v0/callsign/{callsign}", timeout=1.5)
             if r.status_code == 200:
                 fr = r.json().get("response", {}).get("flightroute", {})
                 o, d = fr.get("origin", {}).get("iata_code"), fr.get("destination", {}).get("iata_code")
                 if o and d:
-                    self.route_cache[callsign] = f"{o} > {d}"
-                    return f"{o} > {d}"
-        except: pass
+                    route = f"{o} > {d}"
+                    self.route_cache[callsign] = route
+                    return route
+        except:
+            pass
         self.route_cache[callsign] = None
         return None
 
-class UniversalFlightEngine:
-    def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-        self.resolver = SmartRouteResolver()
-        self.tracked_flights: Dict[str, Dict] = {}
-        self.current_lat = 34.7855
-        self.current_lon = 135.4382
-        self.cached_weather = {"temp": "--", "humidity": "--", "condition": "--", "wind_speed": "--", "wind_dir": "--"}
-        self.last_weather_fetch = 0.0
-
-    def get_weather(self, lat: float, lon: float) -> Dict[str, str]:
+    async def get_weather(self, client: httpx.AsyncClient, lat: float, lon: float) -> Dict[str, str]:
         now = time.time()
-        if (now - self.last_weather_fetch) < 600: return self.cached_weather
+        if (now - self.last_weather_fetch) < 300:
+            return self.cached_weather
         try:
             url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&timezone=Asia%2FTokyo"
-            r = self.session.get(url, timeout=3.0)
+            r = await client.get(url, timeout=2.5)
             if r.status_code == 200:
                 c = r.json().get("current", {})
                 self.cached_weather = {
-                    "temp": str(c.get("temperature_2m", "--")), 
+                    "temp": str(c.get("temperature_2m", "--")),
                     "humidity": str(c.get("relative_humidity_2m", "--")),
-                    "condition": WMO_CODES.get(c.get("weather_code", 0), "不明"),
-                    "wind_speed": str(round(c.get("wind_speed_10m", 0), 1)), 
+                    "condition": WMO_CODES.get(c.get("weather_code", 0), "晴れ"),
+                    "wind_speed": str(round(c.get("wind_speed_10m", 0), 1)),
                     "wind_dir": deg_to_compass_16(c.get("wind_direction_10m", 0))
                 }
                 self.last_weather_fetch = now
-        except: pass
-        return self.cached_weather
-
-    # バックグラウンドで定期実行するデータ取得処理
-    def background_poll(self):
-        url = f"https://api.airplanes.live/v2/point/{self.current_lat:.4f}/{self.current_lon:.4f}/{SEARCH_RADIUS_NM}"
-        raw_list = None
-        try:
-            r = self.session.get(url, timeout=5.0)
-            if r.status_code == 200:
-                raw_list = r.json().get("ac", r.json().get("aircraft"))
         except:
             pass
+        return self.cached_weather
 
-        if not raw_list:
-            # バックアップURLを試行
-            try:
-                r2 = self.session.get(f"https://api.adsb.lol/v2/point/{self.current_lat:.4f}/{self.current_lon:.4f}/{SEARCH_RADIUS_NM}", timeout=5.0)
-                if r2.status_code == 200:
-                    raw_list = r2.json().get("ac", r2.json().get("aircraft"))
-            except:
-                pass
-
-        if not raw_list:
-            return  # 取得失敗時は何もしない（前回のtracked_flightsをそのまま温存）
-
+    async def update_flights(self, home_lat: float, home_lon: float, visible_bearings: List[str]):
         current_time = time.time()
-        apt_code, apt_name, apt_lat, apt_lon = get_nearest_airport(self.current_lat, self.current_lon)
+        apt_code, apt_name, apt_lat, apt_lon = get_nearest_airport(home_lat, home_lon)
 
-        for raw in raw_list:
-            lat, lon, alt = raw.get("lat"), raw.get("lon"), raw.get("alt_baro")
-            if lat is None or lon is None: continue
-            gs = int(raw.get("gs") or 0)
-            alt_baro = 0 if alt in ("ground", None) else int(alt)
-            cs = str(raw.get("flight") or "").strip().upper()
-            if not cs or gs < 45 or any(cs.startswith(p) for p in GROUND_VEHICLE_PREFIXES): continue
+        # 4秒以上経過していれば外部APIへ問い合わせ
+        if (current_time - self.last_api_fetch) >= 4.0:
+            raw_list = None
+            async with httpx.AsyncClient(headers=self.headers, verify=False) as client:
+                for url in [
+                    f"https://api.airplanes.live/v2/point/{home_lat:.4f}/{home_lon:.4f}/{SEARCH_RADIUS_NM}",
+                    f"https://api.adsb.lol/v2/point/{home_lat:.4f}/{home_lon:.4f}/{SEARCH_RADIUS_NM}"
+                ]:
+                    try:
+                        r = await client.get(url, timeout=3.5)
+                        if r.status_code == 200:
+                            data = r.json()
+                            raw_list = data.get("ac") or data.get("aircraft")
+                            if raw_list is not None:
+                                self.last_api_fetch = current_time
+                                break
+                    except:
+                        continue
 
-            vr = int(raw.get("vert_rate") or 0)
-            track = raw.get("track")
-            dist_home, bearing_home, _ = calc_geo_metrics(self.current_lat, self.current_lon, lat, lon, alt_baro)
-            compass_home = deg_to_compass_code(bearing_home)
-            dist_apt, _, _ = calc_geo_metrics(lat, lon, apt_lat, apt_lon, alt_baro)
+                # 機体リストが取得できた場合のみメモリを更新
+                if raw_list is not None:
+                    for raw in raw_list:
+                        lat, lon = raw.get("lat"), raw.get("lon")
+                        if lat is None or lon is None:
+                            continue
+                        alt = raw.get("alt_baro")
+                        gs = int(raw.get("gs") or 0)
+                        alt_baro = 0 if alt in ("ground", None) else int(alt)
+                        cs = str(raw.get("flight") or "").strip().upper()
 
-            api_route = self.resolver.lookup_api(cs)
-            is_target_apt = False
-            if api_route and apt_code in api_route: is_target_apt = True
-            elif dist_apt <= 18.0 and alt_baro <= 6000: is_target_apt = True
+                        if not cs or gs < 40 or any(cs.startswith(p) for p in GROUND_VEHICLE_PREFIXES):
+                            continue
 
-            # 過去に一度でも捕捉されたならステータスを保持
-            prev_f = self.tracked_flights.get(cs)
-            if prev_f:
-                is_target_apt = is_target_apt or prev_f.get("is_target", False)
+                        vr = int(raw.get("vert_rate") or 0)
+                        track = raw.get("track")
+                        dist_home, bearing_home, _ = calc_geo_metrics(home_lat, home_lon, lat, lon, alt_baro)
+                        compass_home = deg_to_compass_code(bearing_home)
+                        dist_apt, _, _ = calc_geo_metrics(lat, lon, apt_lat, apt_lon, alt_baro)
 
-            phase = "通過・周辺便"
-            if is_target_apt:
-                if alt_baro <= 3500 and vr > 150: phase = f"{apt_name} 離陸・上昇"
-                elif alt_baro <= 4500 and vr < -150: phase = f"{apt_name} 進入・降下"
-                elif vr > 250: phase = "離陸・上昇中"
-                elif vr < -250: phase = "進入・降下中"
-                else: phase = f"{apt_name}空域 飛行中"
+                        api_route = await self.lookup_route(client, cs)
+                        is_target_apt = False
+                        if api_route and apt_code in api_route:
+                            is_target_apt = True
+                        elif dist_apt <= 20.0 and alt_baro <= 6500:
+                            is_target_apt = True
 
-            al_info = AIRLINE_DATA.get(cs[:3], AIRLINE_DATA.get(cs[:2], {"name": "民間機", "code": cs[:3], "color": "#475569"}))
-            route_str = api_route
-            if not route_str:
-                h_compass = deg_to_compass_code(track) if track else "---"
-                route_str = f"{apt_code} > {h_compass}" if is_target_apt else f"PASS > {h_compass}"
+                        prev_f = self.tracked_flights.get(cs)
+                        if prev_f:
+                            is_target_apt = is_target_apt or prev_f.get("is_target", False)
 
-            self.tracked_flights[cs] = {
-                "callsign": cs, "airline": al_info["name"], "airline_code": al_info["code"], "color": al_info["color"],
-                "route": route_str, "phase": phase, "model": AIRCRAFT_MAP.get(raw.get("t", ""), raw.get("t", "Aircraft")),
-                "alt": alt_baro, "vr": vr, "gs": gs, "distance": round(dist_home, 1), 
-                "compass": COMPASS_MAP.get(compass_home, compass_home),
-                "compass_code": compass_home,
-                "bearing": bearing_home, "is_target": is_target_apt,
-                "last_seen": current_time
-            }
+                        phase = "通過・周辺便"
+                        if is_target_apt:
+                            if alt_baro <= 3500 and vr > 150: phase = f"{apt_name} 離陸・上昇"
+                            elif alt_baro <= 4500 and vr < -150: phase = f"{apt_name} 進入・降下"
+                            elif vr > 250: phase = "離陸・上昇中"
+                            elif vr < -250: phase = "進入・降下中"
+                            else: phase = f"{apt_name}空域 飛行中"
 
-    # ブラウザ向けAPI（外部通信を待たずにメモリから即答）
-    def get_snapshot(self, lat: float, lon: float, visible_bearings: List[str]):
-        # 観測地が大きく変わった場合は更新
-        d, _, _ = calc_geo_metrics(self.current_lat, self.current_lon, lat, lon)
-        if d > 2.0:
-            self.current_lat = lat
-            self.current_lon = lon
-            self.tracked_flights = {}
+                        al_info = AIRLINE_DATA.get(cs[:3], AIRLINE_DATA.get(cs[:2], {"name": "民間機", "code": cs[:3], "color": "#475569"}))
+                        route_str = api_route
+                        if not route_str:
+                            h_compass = deg_to_compass_code(track) if track else "---"
+                            route_str = f"{apt_code} > {h_compass}" if is_target_apt else f"PASS > {h_compass}"
 
-        current_time = time.time()
-        apt_code, apt_name, _, _ = get_nearest_airport(lat, lon)
-        weather = self.get_weather(lat, lon)
+                        self.tracked_flights[cs] = {
+                            "callsign": cs, "airline": al_info["name"], "airline_code": al_info["code"], "color": al_info["color"],
+                            "route": route_str, "phase": phase, "model": AIRCRAFT_MAP.get(raw.get("t", ""), raw.get("t", "Aircraft")),
+                            "alt": alt_baro, "vr": vr, "gs": gs, "distance": round(dist_home, 1),
+                            "compass": COMPASS_MAP.get(compass_home, compass_home),
+                            "compass_code": compass_home,
+                            "bearing": bearing_home, "is_target": is_target_apt,
+                            "last_seen": current_time
+                        }
 
+        # 天気情報取得
+        async with httpx.AsyncClient(verify=False) as client:
+            weather_data = await self.get_weather(client, home_lat, home_lon)
+
+        # 画面構築用リスト生成
         window_f, other_f = [], []
         for cs, f in list(self.tracked_flights.items()):
             age = current_time - f["last_seen"]
@@ -273,7 +264,7 @@ class UniversalFlightEngine:
                 continue
 
             f_copy = dict(f)
-            f_copy["is_holding"] = age > 8.0
+            f_copy["is_holding"] = age > 6.0
             f_copy["age_sec"] = int(age)
 
             in_win = (f["compass_code"] in visible_bearings) if visible_bearings else True
@@ -284,22 +275,10 @@ class UniversalFlightEngine:
 
         window_f.sort(key=lambda x: x["distance"])
         other_f.sort(key=lambda x: x["distance"])
-        return window_f, other_f[:10], weather, apt_code, apt_name
+        return window_f, other_f[:10], weather_data, apt_code, apt_name
 
 app = FastAPI()
 engine = UniversalFlightEngine()
-
-# バックグラウンド定期ポーリング処理（6秒に1回自動巡回）
-@app.on_event("startup")
-async def start_background_loop():
-    async def poll_task():
-        while True:
-            try:
-                await asyncio.to_thread(engine.background_poll)
-            except Exception as e:
-                pass
-            await asyncio.sleep(6)
-    asyncio.create_task(poll_task())
 
 # ==============================================================================
 # HTML テンプレート
@@ -559,7 +538,7 @@ BOARD_HTML = """
                 radar.querySelectorAll('.radar-blip, .radar-label').forEach(b => b.remove());
 
                 const drawBlip = (f, isTarget, isPrimary) => {
-                    let r = Math.min(f.distance * 1.852 / 22.2, 0.90) * 50;
+                    let r = Math.min(f.distance * 1.852 / 27.7, 0.90) * 50;
                     let rad = (f.bearing - 90) * (Math.PI / 180);
                     let x = 50 + r * Math.cos(rad), y = 50 + r * Math.sin(rad);
                     
@@ -631,8 +610,7 @@ BOARD_HTML = """
             } catch (e) { console.error(e); }
         }
         
-        // 画面の更新間隔（サーバーが裏でデータを常に持っているため3秒更新でも軽快に動きます）
-        setInterval(update, 3000);
+        setInterval(update, 4000);
         update();
     </script>
 </body>
@@ -653,8 +631,7 @@ async def board():
 @app.get("/api/flights")
 async def api_flights(lat: float = Query(...), lon: float = Query(...), bearings: str = Query("")):
     b_list = [b.strip() for b in bearings.split(",")] if bearings else []
-    # 外部通信を待たずに即時スナップショットを返却
-    window_flights, other_flights, weather, apt_code, apt_name = engine.get_snapshot(lat, lon, b_list)
+    window_flights, other_flights, weather, apt_code, apt_name = await engine.update_flights(lat, lon, b_list)
     return {
         "window_flights": window_flights,
         "other_flights": other_flights,
