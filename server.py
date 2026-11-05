@@ -12,7 +12,7 @@ import uvicorn
 # 設定パラメータ（ベース）
 # ==============================================================================
 SEARCH_RADIUS_NM = 12       # 探索半径 (海里: 約22.2km)
-FLIGHT_HOLD_SEC = 120.0     # ADS-B通信途絶後、機体情報を保持し続ける秒数 (45秒→120秒へ延長)
+FLIGHT_HOLD_SEC = 120.0     # ADS-B通信途絶後、機体情報を保持し続ける秒数 (120秒)
 
 # ==============================================================================
 # 日本全国の空港マスタ (最寄り空港自動判定用)
@@ -167,13 +167,17 @@ def get_nearest_airport(lat: float, lon: float) -> Tuple[str, str, float, float]
 class SmartRouteResolver:
     def __init__(self):
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "Mozilla/5.0"})
+        # APIブロック回避のため、一般的なブラウザのUser-Agentを偽装
+        self.session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        })
         self.route_cache = {}
 
     def lookup_api(self, callsign: str) -> Optional[str]:
         if callsign in self.route_cache: return self.route_cache[callsign]
         try:
-            r = self.session.get(f"https://api.adsbdb.com/v0/callsign/{callsign}", timeout=1.0)
+            # タイムアウトを延長
+            r = self.session.get(f"https://api.adsbdb.com/v0/callsign/{callsign}", timeout=3.0)
             if r.status_code == 200:
                 fr = r.json().get("response", {}).get("flightroute", {})
                 o = fr.get("origin", {}).get("iata_code")
@@ -189,7 +193,10 @@ class SmartRouteResolver:
 class UniversalFlightEngine:
     def __init__(self):
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "Mozilla/5.0"})
+        # APIブロック回避用 User-Agent
+        self.session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        })
         self.resolver = SmartRouteResolver()
         self.tracked_flights = {}
         self.current_home = (0.0, 0.0)
@@ -204,7 +211,7 @@ class UniversalFlightEngine:
             
         try:
             url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&timezone=Asia%2FTokyo"
-            r = self.session.get(url, timeout=2.0)
+            r = self.session.get(url, timeout=4.0)
             if r.status_code == 200:
                 c = r.json().get("current", {})
                 self.cached_weather = {
@@ -231,7 +238,8 @@ class UniversalFlightEngine:
         raw_list = None
         for url in [f"https://api.airplanes.live/v2/point/{home_lat:.4f}/{home_lon:.4f}/{SEARCH_RADIUS_NM}", f"https://api.adsb.lol/v2/point/{home_lat:.4f}/{home_lon:.4f}/{SEARCH_RADIUS_NM}"]:
             try:
-                r = self.session.get(url, timeout=3.0)
+                # タイムアウトを延長
+                r = self.session.get(url, timeout=6.0)
                 if r.status_code == 200:
                     raw_list = r.json().get("ac", r.json().get("aircraft"))
                     break
@@ -265,7 +273,7 @@ class UniversalFlightEngine:
                 in_window = (compass_home in visible_bearings) if visible_bearings else True
 
                 # ==============================================================
-                # 🎯 STICKY（張り付き）ロジック: 一度捕捉した機体は条件から外れても維持する
+                # 🎯 STICKY（張り付き）ロジック
                 # ==============================================================
                 prev_f = self.tracked_flights.get(cs)
                 if prev_f:
@@ -306,7 +314,7 @@ class UniversalFlightEngine:
                 del self.tracked_flights[cs]
                 continue
             f_copy = dict(f)
-            f_copy["is_holding"] = age > 5.0
+            f_copy["is_holding"] = age > 6.0
             f_copy["age_sec"] = int(age)
 
             if f_copy["is_target"] and f_copy["in_window"]: window_f.append(f_copy)
@@ -458,7 +466,7 @@ BOARD_HTML = """
         .radar-label { position: absolute; font-size: 10px; color: #7dd3fc; background: rgba(2, 6, 23, 0.85); padding: 2px 4px; border: 1px solid rgba(56, 189, 248, 0.3); z-index: 16; transform: translate(8px, -10px); transition: all 1.5s ease-out; border-radius: 2px; }
         
         .other-flights-panel { background: #0b0f19; border: 2px solid #1f2937; border-radius: 6px; padding: 10px; flex-grow: 1; display: flex; flex-direction: column; overflow: hidden;}
-        .other-flight-item { background: #020617; border: 1px solid #1f2937; border-radius: 4px; padding: 8px; margin-bottom: 6px; display: flex; flex-direction: column; font-size: 11px;}
+        .other-flight-item { background: #020617; border: 1px solid #1f2937; border-radius: 4px; padding: 8px; margin-bottom: 6px; display: flex; flex-direction: column; gap: 4px; font-size: 11px;}
         .standby-board { text-align: center; background: #0b0f19; border: 2px solid #1f2937; border-radius: 6px; padding: 20px; flex-grow: 1; display: flex; flex-direction: column; justify-content: center; }
     </style>
 </head>
@@ -664,7 +672,9 @@ BOARD_HTML = """
 
             } catch (e) { console.error(e); }
         }
-        setInterval(update, 3000);
+        
+        // Render等のクラウド環境での通信ブロック回避のため、リクエスト間隔を5秒に緩和
+        setInterval(update, 5000);
         update();
     </script>
 </body>
