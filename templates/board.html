@@ -2,208 +2,161 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Universal Flight Board</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Leaflet.js -->
+    <title>UNIVERSAL FLIGHT BOARD</title>
+    <!-- Leaflet.js (地図表示用) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@400;600;700&display=swap');
-        .font-mono-tech {
-            font-family: 'Share Tech Mono', monospace;
-        }
-        /* レーダーコンテナ：正円でクリップし、地図とCanvasを重ねる */
-        .radar-container {
-            position: relative;
-            width: 100%;
-            max-width: 450px;
-            aspect-ratio: 1 / 1;
-            margin: 0 auto;
-            border-radius: 50%;
-            overflow: hidden;
-            border: 2px solid #334155;
-            box-shadow: 0 0 25px rgba(16, 185, 129, 0.15);
-            background: #090d16;
-        }
-        /* 下層：Leaflet 地図 */
-        #map {
+        body { background-color: #030712; color: #f1f5f9; font-family: 'Courier New', Courier, monospace, sans-serif; margin: 0; padding: 12px; height: 100vh; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; }
+        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1f2937; padding-bottom: 8px; margin-bottom: 12px; flex-shrink: 0; gap: 10px; flex-wrap: wrap;}
+        .header-left { display: flex; align-items: center; gap: 12px; }
+        .live-dot { width: 10px; height: 10px; background-color: #10b981; border-radius: 50%; box-shadow: 0 0 10px #10b981; animation: pulse 1.6s infinite; flex-shrink: 0;}
+        @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.3; transform: scale(0.85); } 100% { opacity: 1; transform: scale(1); } }
+        h1 { margin: 0; font-size: 19px; color: #fbbf24; letter-spacing: 2px; text-shadow: 0 0 12px rgba(251, 191, 36, 0.4); white-space: nowrap;}
+        
+        .location-controls { display: flex; gap: 4px; align-items: center; background: #0b0f19; padding: 4px 10px; border-radius: 6px; border: 1px solid #1f2937; }
+        .location-controls input { width: 70px; background: #020617; border: 1px solid #374151; color: #fff; font-size: 12px; padding: 4px; border-radius: 3px; text-align: center; }
+        .location-controls .btn-update { background: #0284c7; color: white; border: none; padding: 4px 8px; font-size: 11px; border-radius: 3px; cursor: pointer; font-weight: bold; }
+        .location-controls .btn-update:hover { background: #0369a1; }
+        .location-controls .btn-gps { background: #059669; color: white; border: none; padding: 4px 6px; font-size: 11px; border-radius: 3px; cursor: pointer; }
+        
+        .header-right { display: flex; align-items: center; gap: 15px; }
+        .weather-panel { display: flex; gap: 14px; background: rgba(17, 24, 39, 0.6); padding: 6px 12px; border-radius: 6px; border: 1px solid #1f2937; font-size: 13px; color: #93c5fd; font-weight: bold; }
+        .weather-item span { color: #e2e8f0; margin-left: 4px; }
+        .status { font-size: 12px; color: #6b7280; }
+        
+        .main-layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(340px, 1fr); gap: 16px; flex-grow: 1; min-height: 0; }
+        .left-column { display: flex; flex-direction: column; gap: 12px; min-height: 0; height: 100%; overflow-y: auto; }
+        .right-sidebar { display: flex; flex-direction: column; gap: 12px; min-height: 0; height: 100%; }
+        
+        .flap-card { background: #0b0f19; border: 2px solid #1f2937; border-radius: 6px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 10px 25px rgba(0,0,0,0.8); padding: 14px 18px; flex-shrink: 0; }
+        .flap-card.primary { border-color: #d97706; }
+        .top-info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px dashed #1f2937; padding-bottom: 6px; }
+        .flight-phase-badge { background: #111827; color: #38bdf8; border: 1px solid #374151; padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: bold; letter-spacing: 1px; }
+        .airline-logo { display: inline-block; padding: 2px 7px; border-radius: 3px; font-size: 11px; font-weight: bold; color: #ffffff; margin-right: 6px; }
+        
+        .splitflap-display { display: inline-flex; gap: 3px; background: #000000; padding: 6px 8px; border-radius: 4px; border: 1px solid #262626; box-shadow: inset 0 0 10px rgba(0,0,0,0.9); perspective: 400px; }
+        .flap-char { position: relative; width: 24px; height: 40px; background: #141414; color: #fbbf24; font-size: 24px; font-weight: bold; text-align: center; line-height: 40px; border-radius: 3px; box-shadow: 0 2px 4px rgba(0,0,0,0.8); overflow: hidden; }
+        .flap-char::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: rgba(0, 0, 0, 0.9); border-bottom: 1px solid rgba(255, 255, 255, 0.12); z-index: 5; }
+        .flap-char.flip { animation: flipAnim 0.35s cubic-bezier(0.4, 0.0, 0.2, 1); }
+        @keyframes flipAnim { 0% { transform: rotateX(0deg); } 50% { transform: rotateX(-90deg); } 100% { transform: rotateX(0deg); } }
+        
+        .details-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; background: #000000; padding: 8px 10px; border-radius: 4px; border: 1px solid #1f2937; }
+        .detail-label { font-size: 9px; color: #6b7280; text-align: center; margin-bottom: 2px; }
+        .detail-value { font-size: 13px; color: #f3f4f6; font-weight: bold; text-align: center; }
+        
+        .radar-panel { background: #0b0f19; border: 2px solid #1f2937; border-radius: 6px; padding: 14px; display: flex; flex-direction: column; align-items: center; box-shadow: 0 8px 20px rgba(0,0,0,0.7); flex-shrink: 0; }
+        .radar-title { font-size: 12px; color: #38bdf8; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #1f2937; padding-bottom: 4px; width: 100%; text-align: center; }
+        
+        /* レーダースクリーン */
+        .radar-screen { width: 85%; max-width: 360px; min-width: 250px; aspect-ratio: 1 / 1; border: 3px solid #0f172a; border-radius: 50%; position: relative; overflow: hidden; box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.9), 0 0 10px rgba(56, 189, 248, 0.2); }
+        
+        /* 下層地図（APIキー不要のESRI Dark Gray） */
+        #radar-map {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             z-index: 1;
+            opacity: 0.5;
+            filter: brightness(80%) contrast(120%);
         }
-        /* 上層：透過レーダー Canvas（マウス操作を地図に通す） */
-        #radar {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 2;
-            pointer-events: none;
-        }
+
+        .radar-grid-rings { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 50%; background-image: repeating-radial-gradient(transparent, transparent 15%, rgba(56, 189, 248, 0.15) 15.5%, transparent 16%); z-index: 5; pointer-events: none; }
+        .radar-line-h { position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: rgba(56, 189, 248, 0.25); z-index: 5; pointer-events: none; }
+        .radar-line-v { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(56, 189, 248, 0.25); z-index: 5; pointer-events: none; }
+        .radar-center { position: absolute; top: 50%; left: 50%; width: 5px; height: 5px; background: #38bdf8; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 10px #38bdf8; z-index: 20; pointer-events: none; }
+        .radar-sweep { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 50%; background: conic-gradient(from 0deg, rgba(56,189,248,0.7) 0deg, rgba(56,189,248,0.1) 60deg, transparent 90deg, transparent 360deg); animation: scan 4s linear infinite; pointer-events: none; z-index: 10;}
+        @keyframes scan { to { transform: rotate(360deg); } }
+        
+        .radar-blip { position: absolute; width: 8px; height: 8px; background: #94a3b8; border-radius: 50%; transform: translate(-50%, -50%); z-index: 15; transition: all 1.5s ease-out; }
+        .radar-blip.tgt { background: #facc15; width: 10px; height: 10px; box-shadow: 0 0 8px #facc15; }
+        .radar-blip.tgt.primary { background: #f59e0b; width: 14px; height: 14px; box-shadow: 0 0 15px #f59e0b; }
+        .radar-label { position: absolute; font-size: 10px; color: #7dd3fc; background: rgba(2, 6, 23, 0.85); padding: 2px 4px; border: 1px solid rgba(56, 189, 248, 0.3); z-index: 16; transform: translate(8px, -10px); transition: all 1.5s ease-out; border-radius: 2px; }
+        
+        .other-flights-panel { background: #0b0f19; border: 2px solid #1f2937; border-radius: 6px; padding: 10px; flex-grow: 1; display: flex; flex-direction: column; overflow: hidden;}
+        .other-flight-item { background: #020617; border: 1px solid #1f2937; border-radius: 4px; padding: 8px; margin-bottom: 6px; display: flex; flex-direction: column; font-size: 11px;}
+        .other-badge { display: inline-block; padding: 1px 5px; border-radius: 2px; font-size: 10px; font-weight: bold; color: #fff; margin-right: 4px; }
+        .standby-board { text-align: center; background: #0b0f19; border: 2px solid #1f2937; border-radius: 6px; padding: 20px; flex-grow: 1; display: flex; flex-direction: column; justify-content: center; }
     </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen font-sans">
-    <!-- ヘッダーエリア -->
-    <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-4 flex flex-wrap justify-between items-center gap-4 sticky top-0 z-30">
-        <div class="flex items-center gap-3">
-            <div class="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg border border-emerald-500/20">
-                <i class="fa-solid fa-plane-departure text-xl"></i>
-            </div>
+<body>
+    <header>
+        <div class="header-left">
+            <div class="live-dot"></div>
             <div>
-                <h1 class="text-lg font-bold tracking-wider text-slate-100 font-mono-tech">FLIGHT RADAR DASHBOARD</h1>
-                <p class="text-xs text-slate-400 flex items-center gap-2">
-                    <span id="airport-display"><i class="fa-solid fa-location-dot text-emerald-400"></i> Detecting airport...</span>
-                    <span>•</span>
-                    <span id="weather-display"><i class="fa-solid fa-cloud"></i> Weather updating...</span>
-                </p>
+                <h1 id="board-title">UNIVERSAL FLIGHT BOARD</h1>
+                <div class="status" id="provider-status">接続中...</div>
             </div>
         </div>
+        
+        <div class="location-controls">
+            <span style="font-size: 11px; color:#9ca3af; font-weight:bold;">観測地:</span>
+            <input type="text" id="board-lat" placeholder="緯度">
+            <input type="text" id="board-lon" placeholder="経度">
+            <button class="btn-update" onclick="updateLocation()">更新</button>
+            <button class="btn-gps" onclick="getBoardLocation()" title="現在地を取得">📍</button>
+        </div>
 
-        <!-- 観測地点・コントロール -->
-        <div class="flex items-center gap-3 text-sm">
-            <div class="flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
-                <span class="text-xs text-slate-400">LAT:</span>
-                <input id="board-lat" type="text" class="w-24 bg-transparent text-emerald-400 font-mono-tech focus:outline-none" />
-                <span class="text-xs text-slate-400 ml-1">LON:</span>
-                <input id="board-lon" type="text" class="w-24 bg-transparent text-emerald-400 font-mono-tech focus:outline-none" />
-                <button onclick="updateLocation()" class="ml-2 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold transition">
-                    更新
-                </button>
-            </div>
-            <a href="/" class="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 text-slate-300 transition" title="設定画面に戻る">
-                <i class="fa-solid fa-gear"></i>
-            </a>
+        <div class="header-right">
+            <div class="weather-panel" id="weather-panel"><div class="weather-item">🌧️ 取得中...</div></div>
+            <div class="status" id="clock" style="font-size: 18px; color: #fbbf24; font-weight: bold;">--:--:--</div>
         </div>
     </header>
 
-    <!-- メインコンテンツ -->
-    <main class="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        <!-- 左列：レーダースクリーン -->
-        <section class="lg:col-span-5 flex flex-col items-center justify-start bg-slate-900/40 border border-slate-800/80 rounded-2xl p-6 backdrop-blur">
-            <div class="w-full flex justify-between items-center mb-4">
-                <span class="text-xs font-bold text-slate-400 tracking-wider flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    AIRSPACE RADAR (28km RANGE)
-                </span>
-                <span id="tracked-count" class="text-xs font-mono-tech text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/50">
-                    0 AIRCRAFTS
-                </span>
+    <div class="main-layout">
+        <div id="board-container" class="left-column">
+            <div class="standby-board">
+                <div style="font-size: 18px; color: #38bdf8; font-weight: bold; margin-bottom: 6px;">🪟 空域をスキャン中...</div>
+                <div style="font-size: 12px; color: #9ca3af;">最寄り空港のトラフィックを受信すると表示されます</div>
+            </div>
+        </div>
+
+        <div class="right-sidebar">
+            <div class="radar-panel">
+                <div class="radar-title">📡 ターミナルレーダー</div>
+                <div class="radar-screen" id="radar-screen">
+                    <div id="radar-map"></div>
+                    <div class="radar-grid-rings"></div>
+                    <div class="radar-line-h"></div>
+                    <div class="radar-line-v"></div>
+                    <div class="radar-sweep"></div>
+                    <div class="radar-center" title="現在地"></div>
+                </div>
+                <div style="font-size: 9px; color: #6b7280; text-align: center; margin-top: 10px;">水色＝現在地 / 黄＝最寄り空港便 / 灰＝通過機</div>
             </div>
 
-            <div class="radar-container">
-                <div id="map"></div>
-                <canvas id="radar" width="450" height="450"></canvas>
+            <div class="other-flights-panel">
+                <div style="font-size: 11px; color: #9ca3af; font-weight: bold; border-bottom: 1px solid #1f2937; padding-bottom: 4px; margin-bottom: 6px;">
+                    ✈ 周辺通過機 近い順 (<span id="other-count">0</span>機)
+                </div>
+                <div id="other-flights-list" style="overflow-y: auto;"></div>
             </div>
-
-            <div class="w-full grid grid-cols-3 gap-2 mt-5 text-center text-xs">
-                <div class="p-2 rounded bg-slate-800/50 border border-slate-800">
-                    <span class="text-slate-400 block mb-0.5">内側円</span>
-                    <span class="font-mono-tech text-slate-200">10 km</span>
-                </div>
-                <div class="p-2 rounded bg-slate-800/50 border border-slate-800">
-                    <span class="text-slate-400 block mb-0.5">中間円</span>
-                    <span class="font-mono-tech text-slate-200">20 km</span>
-                </div>
-                <div class="p-2 rounded bg-slate-800/50 border border-slate-800">
-                    <span class="text-slate-400 block mb-0.5">外側円</span>
-                    <span class="font-mono-tech text-slate-200">28 km</span>
-                </div>
-            </div>
-        </section>
-
-        <!-- 右列：フライトボード -->
-        <section class="lg:col-span-7 flex flex-col gap-6">
-            
-            <!-- 見通しエリア（指定方角）内のフライト -->
-            <div class="bg-slate-900/40 border border-emerald-900/40 rounded-2xl p-6 backdrop-blur">
-                <div class="flex justify-between items-center mb-4">
-                    <div class="flex items-center gap-2">
-                        <i class="fa-solid fa-binoculars text-emerald-400 text-sm"></i>
-                        <h2 class="text-sm font-bold tracking-wider text-emerald-300">窓・ベランダから見える空域の機体</h2>
-                    </div>
-                    <span class="text-xs text-slate-400">視界指定エリア内</span>
-                </div>
-
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="border-b border-slate-800 text-xs font-mono-tech text-slate-400 uppercase">
-                                <th class="py-2.5 px-3">Callsign</th>
-                                <th class="py-2.5 px-3">Route</th>
-                                <th class="py-2.5 px-3">Altitude</th>
-                                <th class="py-2.5 px-3">Speed</th>
-                                <th class="py-2.5 px-3">Dist/Dir</th>
-                                <th class="py-2.5 px-3">Type</th>
-                            </tr>
-                        </thead>
-                        <tbody id="window-flights-table" class="text-sm font-mono-tech divide-y divide-slate-800/60">
-                            <tr>
-                                <td colspan="6" class="py-6 text-center text-slate-500 text-xs">現在この方角に飛行機はいません</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- その他の周辺空域フライト -->
-            <div class="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-6 backdrop-blur">
-                <div class="flex justify-between items-center mb-4">
-                    <div class="flex items-center gap-2">
-                        <i class="fa-solid fa-radar text-slate-400 text-sm"></i>
-                        <h2 class="text-sm font-bold tracking-wider text-slate-300">周辺空域の機体（その他）</h2>
-                    </div>
-                    <span class="text-xs text-slate-400">全方位</span>
-                </div>
-
-                <div class="overflow-x-auto max-h-72">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="border-b border-slate-800 text-xs font-mono-tech text-slate-400 uppercase">
-                                <th class="py-2 px-3">Callsign</th>
-                                <th class="py-2 px-3">Route</th>
-                                <th class="py-2 px-3">Altitude</th>
-                                <th class="py-2 px-3">Speed</th>
-                                <th class="py-2 px-3">Dist/Dir</th>
-                            </tr>
-                        </thead>
-                        <tbody id="other-flights-table" class="text-xs font-mono-tech divide-y divide-slate-800/40 text-slate-300">
-                            <tr>
-                                <td colspan="5" class="py-4 text-center text-slate-500 text-xs">探索中...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </section>
-    </main>
+        </div>
+    </div>
 
     <script>
-        // --- 1. パラメータ取得とクレンジング ---
         const urlParams = new URLSearchParams(window.location.search);
+        // カンマ混入を防ぐ安全処理
         let lat = (urlParams.get('lat') || "34.7855").replace(/,/g, '').trim();
         let lon = (urlParams.get('lon') || "135.4382").replace(/,/g, '').trim();
         const bearings = urlParams.getAll('b').join(',');
-
+        
         document.getElementById('board-lat').value = lat;
         document.getElementById('board-lon').value = lon;
 
-        // --- 2. Leaflet 地図の初期化 ---
-        let map = null;
-        let centerMarker = null;
+        setInterval(() => { document.getElementById('clock').innerText = new Date().toTimeString().split(' ')[0]; }, 1000);
+        let lastRoutes = {};
 
-        function initMap(cLat, cLon) {
+        // --- Leaflet 地図の初期化（APIキー不要の ESRI Dark Gray Canvas） ---
+        let map = null;
+        function initRadarMap(cLat, cLon) {
             const numLat = parseFloat(cLat);
             const numLon = parseFloat(cLon);
 
             if (!map) {
-                map = L.map('map', {
+                map = L.map('radar-map', {
                     center: [numLat, numLon],
                     zoom: 10,
                     zoomControl: false,
@@ -214,182 +167,174 @@
                     boxZoom: false
                 });
 
-                // 航空レーダーにマッチするダーク系タイル (CartoDB DarkMatter)
-                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                    maxZoom: 19,
-                    subdomains: 'abcd'
-                }).addTo(map);
-
-                centerMarker = L.circleMarker([numLat, numLon], {
-                    radius: 4,
-                    color: '#10b981',
-                    fillColor: '#10b981',
-                    fillOpacity: 1
+                // APIキー不要・高信頼性のダークマップタイル
+                L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+                    maxZoom: 16
                 }).addTo(map);
             } else {
                 map.setView([numLat, numLon], 10);
-                if (centerMarker) {
-                    centerMarker.setLatLng([numLat, numLon]);
-                }
             }
         }
 
-        // --- 3. Canvas レーダー描画 ---
-        const canvas = document.getElementById('radar');
-        const ctx = canvas.getContext('2d');
-        const MAX_DIST_KM = 28.0;
-
-        function drawRadar(flights) {
-            const w = canvas.width;
-            const h = canvas.height;
-            const cx = w / 2;
-            const cy = h / 2;
-            const radius = w / 2 - 12;
-
-            // Canvas全体をクリア（下層の地図を透かす）
-            ctx.clearRect(0, 0, w, h);
-
-            // 同心円（10km, 20km, 28km）
-            ctx.strokeStyle = "rgba(16, 185, 129, 0.25)";
-            ctx.lineWidth = 1;
-            [10, 20, 28].forEach(d => {
-                const r = (d / MAX_DIST_KM) * radius;
-                ctx.beginPath();
-                ctx.arc(cx, cy, r, 0, Math.PI * 2);
-                ctx.stroke();
-            });
-
-            // 十字ライン（N-S, E-W）
-            ctx.strokeStyle = "rgba(16, 185, 129, 0.2)";
-            ctx.beginPath();
-            ctx.moveTo(cx, cy - radius); ctx.lineTo(cx, cy + radius);
-            ctx.moveTo(cx - radius, cy); ctx.lineTo(cx + radius, cy);
-            ctx.stroke();
-
-            // 方角テキスト
-            ctx.fillStyle = "rgba(16, 185, 129, 0.6)";
-            ctx.font = "10px 'Share Tech Mono'";
-            ctx.textAlign = "center";
-            ctx.fillText("N", cx, cy - radius + 14);
-            ctx.fillText("S", cx, cy + radius - 6);
-            ctx.fillText("E", cx + radius - 10, cy + 3);
-            ctx.fillText("W", cx - radius + 10, cy + 3);
-
-            // 機体プロット
-            flights.forEach(f => {
-                if (!f.distance_km || f.distance_km > MAX_DIST_KM) return;
-
-                // bearing: 北が0度、時計回り
-                const rad = ((f.bearing_deg || 0) - 90) * (Math.PI / 180);
-                const r = (f.distance_km / MAX_DIST_KM) * radius;
-                const x = cx + r * Math.cos(rad);
-                const y = cy + r * Math.sin(rad);
-
-                // 進行方向の矢印
-                ctx.save();
-                ctx.translate(x, y);
-                ctx.rotate(((f.track || 0) * Math.PI) / 180);
-
-                ctx.fillStyle = f.is_window ? "#10b981" : "#f59e0b";
-                ctx.beginPath();
-                ctx.moveTo(0, -6);
-                ctx.lineTo(4, 5);
-                ctx.lineTo(-4, 5);
-                ctx.closePath();
-                ctx.fill();
-                ctx.restore();
-
-                // コールサインラベル
-                ctx.fillStyle = f.is_window ? "#34d399" : "#fbbf24";
-                ctx.font = "9px 'Share Tech Mono'";
-                ctx.textAlign = "left";
-                ctx.fillText(f.callsign || "N/A", x + 6, y + 3);
-            });
-        }
-
-        // --- 4. データ更新処理 ---
-        async function fetchFlightData() {
-            try {
-                const res = await fetch(`/api/flights?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&bearings=${encodeURIComponent(bearings)}`);
-                if (!res.ok) return;
-                const data = await res.json();
-
-                // ヘッダー情報
-                if (data.apt_code) {
-                    document.getElementById('airport-display').innerHTML = 
-                        `<i class="fa-solid fa-location-dot text-emerald-400"></i> ${data.apt_name} (${data.apt_code})`;
-                }
-                if (data.weather) {
-                    document.getElementById('weather-display').innerHTML = 
-                        `<i class="fa-solid fa-cloud-sun text-slate-300"></i> ${data.weather.temp_c}°C | ${data.weather.wind_spd_kmh}km/h (${data.weather.wind_dir_compass})`;
-                }
-
-                // 見通しフライトのテーブル反映
-                const wTbody = document.getElementById('window-flights-table');
-                if (data.window_flights && data.window_flights.length > 0) {
-                    wTbody.innerHTML = data.window_flights.map(f => `
-                        <tr class="hover:bg-emerald-950/20 transition">
-                            <td class="py-2.5 px-3 font-bold text-emerald-400">${f.callsign || 'N/A'}</td>
-                            <td class="py-2.5 px-3 text-slate-200">${f.origin || '---'} ➜ ${f.destination || '---'}</td>
-                            <td class="py-2.5 px-3 text-slate-300">${f.altitude_ft ? f.altitude_ft.toLocaleString() + ' ft' : '---'}</td>
-                            <td class="py-2.5 px-3 text-slate-300">${f.speed_kts ? f.speed_kts + ' kt' : '---'}</td>
-                            <td class="py-2.5 px-3 text-emerald-300">${f.distance_km ? f.distance_km.toFixed(1) + 'km' : '--'} (${f.bearing_compass || '--'})</td>
-                            <td class="py-2.5 px-3 text-slate-400 text-xs">${f.aircraft_type || '---'}</td>
-                        </tr>
-                    `).join('');
-                } else {
-                    wTbody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-slate-500 text-xs">現在この方角に飛行機はいません</td></tr>`;
-                }
-
-                // その他のフライトテーブル反映
-                const oTbody = document.getElementById('other-flights-table');
-                if (data.other_flights && data.other_flights.length > 0) {
-                    oTbody.innerHTML = data.other_flights.map(f => `
-                        <tr class="hover:bg-slate-800/40 transition">
-                            <td class="py-2 px-3 font-semibold text-amber-400">${f.callsign || 'N/A'}</td>
-                            <td class="py-2 px-3 text-slate-300">${f.origin || '---'} ➜ ${f.destination || '---'}</td>
-                            <td class="py-2 px-3 text-slate-400">${f.altitude_ft ? f.altitude_ft.toLocaleString() + ' ft' : '---'}</td>
-                            <td class="py-2 px-3 text-slate-400">${f.speed_kts ? f.speed_kts + ' kt' : '---'}</td>
-                            <td class="py-2 px-3 text-slate-400">${f.distance_km ? f.distance_km.toFixed(1) + 'km' : '--'} (${f.bearing_compass || '--'})</td>
-                        </tr>
-                    `).join('');
-                } else {
-                    oTbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-slate-500 text-xs">周辺に飛行機はいません</td></tr>`;
-                }
-
-                // レーダー更新
-                const allFlights = [
-                    ...(data.window_flights || []).map(f => ({ ...f, is_window: true })),
-                    ...(data.other_flights || []).map(f => ({ ...f, is_window: false }))
-                ];
-                document.getElementById('tracked-count').innerText = `${allFlights.length} AIRCRAFTS`;
-                drawRadar(allFlights);
-
-            } catch (err) {
-                console.error("Fetch error:", err);
-            }
-        }
-
-        // --- 5. 観測地点の更新ボタン ---
         function updateLocation() {
             lat = document.getElementById('board-lat').value.replace(/,/g, '').trim();
             lon = document.getElementById('board-lon').value.replace(/,/g, '').trim();
             document.getElementById('board-lat').value = lat;
             document.getElementById('board-lon').value = lon;
 
-            const newUrl = new URL(window.location);
+            let newUrl = new URL(window.location);
             newUrl.searchParams.set('lat', lat);
             newUrl.searchParams.set('lon', lon);
             window.history.pushState({}, '', newUrl);
 
-            initMap(lat, lon);
-            fetchFlightData();
+            initRadarMap(lat, lon);
+            update();
         }
 
-        // --- 起動 ---
-        initMap(lat, lon);
-        fetchFlightData();
-        setInterval(fetchFlightData, 5000); // 5秒ごとに自動更新
+        function getBoardLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition((pos) => {
+                    document.getElementById('board-lat').value = pos.coords.latitude.toFixed(4);
+                    document.getElementById('board-lon').value = pos.coords.longitude.toFixed(4);
+                    updateLocation();
+                }, () => alert("GPSの取得に失敗しました。"));
+            }
+        }
+
+        function renderFlap(text, id) {
+            let padded = (text || "").padEnd(12, ' ').slice(0, 12);
+            let prev = lastRoutes[id] || "";
+            let html = '<div class="splitflap-display">';
+            for (let i = 0; i < padded.length; i++) {
+                let char = padded[i];
+                let cls = (prev[i] !== char) ? 'flip' : '';
+                html += `<div class="flap-char ${cls}">${char === ' ' ? '&nbsp;' : char}</div>`;
+            }
+            html += '</div>';
+            lastRoutes[id] = padded;
+            return html;
+        }
+
+        async function update() {
+            try {
+                let res = await fetch(`/api/flights?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&bearings=${encodeURIComponent(bearings)}`);
+                let data = await res.json();
+                
+                document.getElementById('board-title').innerText = `${data.apt_code} FLIGHT BOARD`;
+                document.getElementById('provider-status').innerHTML = `BASE: ${data.apt_name}周辺 (対象: ${data.window_flights.length}機)`;
+                
+                if(data.weather) {
+                    document.getElementById('weather-panel').innerHTML = `
+                        <div class="weather-item">☁️ <span>${data.weather.condition || '快晴'}</span></div>
+                        <div class="weather-item">🌡️ <span>${data.weather.temp_c || data.weather.temp || '--'}℃</span></div>
+                        <div class="weather-item">💧 <span>${data.weather.humidity || '--'}%</span></div>
+                        <div class="weather-item">🌬️ <span>${data.weather.wind_dir_compass || data.weather.wind_dir || ''} ${data.weather.wind_spd_kmh ? (data.weather.wind_spd_kmh / 3.6).toFixed(1) : (data.weather.wind_speed || '--')}m/s</span></div>
+                    `;
+                }
+
+                let container = document.getElementById('board-container');
+                let radar = document.getElementById('radar-screen');
+                let otherList = document.getElementById('other-flights-list');
+                document.getElementById('other-count').innerText = data.other_flights.length;
+                
+                // 既存の航空機プロットを削除
+                radar.querySelectorAll('.radar-blip, .radar-label').forEach(b => b.remove());
+
+                const drawBlip = (f, isTarget, isPrimary) => {
+                    const distKm = f.distance_km || (f.distance ? f.distance * 1.852 : 0);
+                    const bearingDeg = f.bearing_deg || f.bearing || 0;
+                    const altVal = f.altitude_ft || f.alt || 0;
+
+                    let r = Math.min(distKm / 27.7, 0.90) * 50;
+                    let rad = (bearingDeg - 90) * (Math.PI / 180);
+                    let x = 50 + r * Math.cos(rad), y = 50 + r * Math.sin(rad);
+                    
+                    let b = document.createElement('div');
+                    b.className = `radar-blip ${isTarget ? 'tgt' : ''} ${isPrimary ? 'primary' : ''}`;
+                    b.style.left = `${x}%`; b.style.top = `${y}%`;
+                    radar.appendChild(b);
+                    
+                    if(isTarget) {
+                        let l = document.createElement('div');
+                        l.className = 'radar-label'; l.style.left = `${x}%`; l.style.top = `${y}%`;
+                        l.innerHTML = `${f.callsign}<br><span style="color:#fbbf24">${altVal}ft</span>`;
+                        radar.appendChild(l);
+                    }
+                };
+
+                data.other_flights.forEach(f => drawBlip(f, false, false));
+                data.window_flights.forEach((f, i) => drawBlip(f, true, i === 0));
+
+                if (data.window_flights.length === 0) {
+                    container.innerHTML = `<div class="standby-board"><div style="color:#38bdf8;font-size:18px;font-weight:bold;">🪟 視界内はクリアです</div><div style="color:#9ca3af;font-size:12px;margin-top:6px;">現在、指定方角に${data.apt_name}発着便は見当たりません</div></div>`;
+                } else {
+                    container.innerHTML = data.window_flights.map((f, i) => {
+                        const routeText = f.route || `${f.origin || '---'} - ${f.destination || '---'}`;
+                        const altText = f.altitude_ft || f.alt || '--';
+                        const spdText = f.speed_kts || f.gs || '--';
+                        const distText = f.distance_km ? f.distance_km.toFixed(1) : (f.distance || '--');
+                        const compassText = f.bearing_compass || f.compass || '--';
+                        const modelText = f.aircraft_type || f.model || '---';
+
+                        return `
+                        <div class="flap-card ${i === 0 ? 'primary' : ''}">
+                            <div class="top-info">
+                                <div class="flight-phase-badge">${i === 0 ? '★ VISIBLE' : '◆ IN VIEW'} : ${f.phase || 'EN ROUTE'}${f.is_holding ? ` <span style="color:#f59e0b">[HOLD ${f.age_sec || ''}s]</span>` : ''}</div>
+                                <div style="font-size: 13px; font-weight: bold; color: #9ca3af;">
+                                    <span class="airline-logo" style="background-color: ${f.color || '#3b82f6'};">${f.airline_code || (f.callsign ? f.callsign.slice(0,3) : 'FLT')}</span>
+                                    <span style="color: #f8fafc;">${f.callsign || 'N/A'}</span>
+                                </div>
+                            </div>
+                            <div style="font-size: 9px; color: #6b7280; margin-bottom:4px;">FLIGHT ROUTE</div>
+                            <div>${renderFlap(routeText, `slot_${i}`)}</div>
+                            <div class="details-grid">
+                                <div><div class="detail-label">AIRCRAFT</div><div class="detail-value" style="color:#38bdf8;">${modelText}</div></div>
+                                <div><div class="detail-label">ALTITUDE</div><div class="detail-value">${altText} ft</div></div>
+                                <div><div class="detail-label">SPEED/VR</div><div class="detail-value">${spdText}kt (${(f.vr || 0) > 0 ? '+' : ''}${f.vr || 0})</div></div>
+                                <div><div class="detail-label">DIRECTION</div><div class="detail-value" style="color:#fbbf24;">${compassText} / ${distText}km</div></div>
+                            </div>
+                        </div>
+                    `;}).join('');
+                }
+
+                otherList.innerHTML = data.other_flights.map(f => {
+                    let vrSign = (f.vr || 0) > 0 ? "▲" : ((f.vr || 0) < 0 ? "▼" : "―");
+                    let holdBadge = f.is_holding ? ` <span style="color:#f59e0b; font-size:9px;">[HOLD]</span>` : '';
+                    const routeText = f.route || `${f.origin || '---'} - ${f.destination || '---'}`;
+                    const altText = f.altitude_ft || f.alt || '--';
+                    const spdText = f.speed_kts || f.gs || '--';
+                    const distText = f.distance_km ? f.distance_km.toFixed(1) : (f.distance || '--');
+                    const compassText = f.bearing_compass || f.compass || '--';
+
+                    return `
+                    <div class="other-flight-item">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <span class="other-badge" style="background:${f.color || '#3b82f6'};">${f.airline_code || (f.callsign ? f.callsign.slice(0,3) : 'FLT')}</span> 
+                                <span style="color:#f8fafc;font-weight:bold;">${f.callsign || 'N/A'}</span>
+                                <span style="color:#9ca3af;font-size:10px;margin-left:4px;">${f.airline || ''}</span>
+                                ${holdBadge}
+                            </div>
+                            <div style="color:#e2e8f0;font-weight:bold;font-size:10px;">${distText}km / ${compassText}</div>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+                            <div style="color:#38bdf8;font-weight:bold;font-family:monospace;font-size:12px;">✈ ${routeText}</div>
+                            <div style="color:#cbd5e1;font-size:10px;text-align:right;">
+                                ALT: <span style="color:#fbbf24;font-weight:bold;">${altText}ft</span> ${vrSign} <br>
+                                SPD: <span style="color:#fbbf24;font-weight:bold;">${spdText}kt</span>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                }).join('');
+
+            } catch (e) { console.error(e); }
+        }
+        
+        // 初回ロード
+        initRadarMap(lat, lon);
+        setInterval(update, 3000);
+        update();
     </script>
 </body>
 </html>
