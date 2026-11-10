@@ -1,0 +1,28 @@
+# 仮想環境 (Virtual Environments)
+.venv/
+venv/
+ENV/
+env/
+
+# Python キャッシュ & バイトコード
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 環境変数・機密設定ファイル
+.env
+.env.local
+
+# エディタ・IDE設定
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS固有の生成ファイル
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ログファイル
+*.log
