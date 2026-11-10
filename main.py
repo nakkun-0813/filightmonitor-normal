@@ -18,11 +18,11 @@ engine = UniversalFlightEngine()
 
 @app.get("/", response_class=HTMLResponse)
 async def setup(request: Request):
-    return templates.TemplateResponse("setup.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="setup.html")
 
 @app.get("/board", response_class=HTMLResponse)
 async def board(request: Request):
-    return templates.TemplateResponse("board.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="board.html")
 
 @app.get("/api/flights")
 async def api_flights(lat: float = Query(...), lon: float = Query(...), bearings: str = Query("")):
