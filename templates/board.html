@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>UNIVERSAL FLIGHT BOARD</title>
+    <style>
+        body { background-color: #030712; color: #f1f5f9; font-family: 'Courier New', Courier, monospace, sans-serif; margin: 0; padding: 12px; height: 100vh; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; }
+        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1f2937; padding-bottom: 8px; margin-bottom: 12px; flex-shrink: 0; gap: 10px; flex-wrap: wrap;}
+        .header-left { display: flex; align-items: center; gap: 12px; }
+        .live-dot { width: 10px; height: 10px; background-color: #10b981; border-radius: 50%; box-shadow: 0 0 10px #10b981; animation: pulse 1.6s infinite; flex-shrink: 0;}
+        @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.3; transform: scale(0.85); } 100% { opacity: 1; transform: scale(1); } }
+        h1 { margin: 0; font-size: 19px; color: #fbbf24; letter-spacing: 2px; text-shadow: 0 0 12px rgba(251, 191, 36, 0.4); white-space: nowrap;}
+        
+        .location-controls { display: flex; gap: 4px; align-items: center; background: #0b0f19; padding: 4px 10px; border-radius: 6px; border: 1px solid #1f2937; }
+        .location-controls input { width: 70px; background: #020617; border: 1px solid #374151; color: #fff; font-size: 12px; padding: 4px; border-radius: 3px; text-align: center; }
+        .location-controls .btn-update { background: #0284c7; color: white; border: none; padding: 4px 8px; font-size: 11px; border-radius: 3px; cursor: pointer; font-weight: bold; }
+        .location-controls .btn-update:hover { background: #0369a1; }
+        .location-controls .btn-gps { background: #059669; color: white; border: none; padding: 4px 6px; font-size: 11px; border-radius: 3px; cursor: pointer; }
+        
+        .header-right { display: flex; align-items: center; gap: 15px; }
+        .weather-panel { display: flex; gap: 14px; background: rgba(17, 24, 39, 0.6); padding: 6px 12px; border-radius: 6px; border: 1px solid #1f2937; font-size: 13px; color: #93c5fd; font-weight: bold; }
+        .weather-item span { color: #e2e8f0; margin-left: 4px; }
+        .status { font-size: 12px; color: #6b7280; }
+        
+        .main-layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(340px, 1fr); gap: 16px; flex-grow: 1; min-height: 0; }
+        .left-column { display: flex; flex-direction: column; gap: 12px; min-height: 0; height: 100%; overflow-y: auto; }
+        .right-sidebar { display: flex; flex-direction: column; gap: 12px; min-height: 0; height: 100%; }
+        
+        .flap-card { background: #0b0f19; border: 2px solid #1f2937; border-radius: 6px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 10px 25px rgba(0,0,0,0.8); padding: 14px 18px; flex-shrink: 0; }
+        .flap-card.primary { border-color: #d97706; }
+        .top-info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px dashed #1f2937; padding-bottom: 6px; }
+        .flight-phase-badge { background: #111827; color: #38bdf8; border: 1px solid #374151; padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: bold; letter-spacing: 1px; }
+        .airline-logo { display: inline-block; padding: 2px 7px; border-radius: 3px; font-size: 11px; font-weight: bold; color: #ffffff; margin-right: 6px; }
+        
+        .splitflap-display { display: inline-flex; gap: 3px; background: #000000; padding: 6px 8px; border-radius: 4px; border: 1px solid #262626; box-shadow: inset 0 0 10px rgba(0,0,0,0.9); perspective: 400px; }
+        .flap-char { position: relative; width: 24px; height: 40px; background: #141414; color: #fbbf24; font-size: 24px; font-weight: bold; text-align: center; line-height: 40px; border-radius: 3px; box-shadow: 0 2px 4px rgba(0,0,0,0.8); overflow: hidden; }
+        .flap-char::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: rgba(0, 0, 0, 0.9); border-bottom: 1px solid rgba(255, 255, 255, 0.12); z-index: 5; }
+        .flap-char.flip { animation: flipAnim 0.35s cubic-bezier(0.4, 0.0, 0.2, 1); }
+        @keyframes flipAnim { 0% { transform: rotateX(0deg); } 50% { transform: rotateX(-90deg); } 100% { transform: rotateX(0deg); } }
+        
+        .details-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; background: #000000; padding: 8px 10px; border-radius: 4px; border: 1px solid #1f2937; }
+        .detail-label { font-size: 9px; color: #6b7280; text-align: center; margin-bottom: 2px; }
+        .detail-value { font-size: 13px; color: #f3f4f6; font-weight: bold; text-align: center; }
+        
+        .radar-panel { background: #0b0f19; border: 2px solid #1f2937; border-radius: 6px; padding: 14px; display: flex; flex-direction: column; align-items: center; box-shadow: 0 8px 20px rgba(0,0,0,0.7); flex-shrink: 0; }
+        .radar-title { font-size: 12px; color: #38bdf8; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #1f2937; padding-bottom: 4px; width: 100%; text-align: center; }
+        
+        .radar-screen { width: 85%; max-width: 360px; min-width: 250px; aspect-ratio: 1 / 1; background: radial-gradient(circle at center, #002b4d 0%, #000a14 70%); border: 3px solid #0f172a; border-radius: 50%; position: relative; overflow: hidden; box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.9), 0 0 10px rgba(56, 189, 248, 0.2); }
+        .radar-grid-rings { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 50%; background-image: repeating-radial-gradient(transparent, transparent 15%, rgba(56, 189, 248, 0.15) 15.5%, transparent 16%); }
+        .radar-line-h { position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: rgba(56, 189, 248, 0.25); }
+        .radar-line-v { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(56, 189, 248, 0.25); }
+        .radar-center { position: absolute; top: 50%; left: 50%; width: 5px; height: 5px; background: #38bdf8; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 10px #38bdf8; z-index: 20; }
+        .radar-sweep { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 50%; background: conic-gradient(from 0deg, rgba(56,189,248,0.7) 0deg, rgba(56,189,248,0.1) 60deg, transparent 90deg, transparent 360deg); animation: scan 4s linear infinite; pointer-events: none; z-index: 10;}
+        @keyframes scan { to { transform: rotate(360deg); } }
+        
+        .radar-blip { position: absolute; width: 8px; height: 8px; background: #94a3b8; border-radius: 50%; transform: translate(-50%, -50%); z-index: 15; transition: all 1.5s ease-out; }
+        .radar-blip.tgt { background: #facc15; width: 10px; height: 10px; box-shadow: 0 0 8px #facc15; }
+        .radar-blip.tgt.primary { background: #f59e0b; width: 14px; height: 14px; box-shadow: 0 0 15px #f59e0b; }
+        .radar-label { position: absolute; font-size: 10px; color: #7dd3fc; background: rgba(2, 6, 23, 0.85); padding: 2px 4px; border: 1px solid rgba(56, 189, 248, 0.3); z-index: 16; transform: translate(8px, -10px); transition: all 1.5s ease-out; border-radius: 2px; }
+        
+        .other-flights-panel { background: #0b0f19; border: 2px solid #1f2937; border-radius: 6px; padding: 10px; flex-grow: 1; display: flex; flex-direction: column; overflow: hidden;}
+        .other-flight-item { background: #020617; border: 1px solid #1f2937; border-radius: 4px; padding: 8px; margin-bottom: 6px; display: flex; flex-direction: column; font-size: 11px;}
+        .standby-board { text-align: center; background: #0b0f19; border: 2px solid #1f2937; border-radius: 6px; padding: 20px; flex-grow: 1; display: flex; flex-direction: column; justify-content: center; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <div class="live-dot"></div>
+            <div>
+                <h1 id="board-title">UNIVERSAL FLIGHT BOARD</h1>
+                <div class="status" id="provider-status">接続中...</div>
+            </div>
+        </div>
+        
+        <div class="location-controls">
+            <span style="font-size: 11px; color:#9ca3af; font-weight:bold;">観測地:</span>
+            <input type="text" id="board-lat" placeholder="緯度">
+            <input type="text" id="board-lon" placeholder="経度">
+            <button class="btn-update" onclick="updateLocation()">更新</button>
+            <button class="btn-gps" onclick="getBoardLocation()" title="現在地を取得">📍</button>
+        </div>
+
+        <div class="header-right">
+            <div class="weather-panel" id="weather-panel"><div class="weather-item">🌧️ 取得中...</div></div>
+            <div class="status" id="clock" style="font-size: 18px; color: #fbbf24; font-weight: bold;">--:--:--</div>
+        </div>
+    </header>
+
+    <div class="main-layout">
+        <div id="board-container" class="left-column">
+            <div class="standby-board">
+                <div style="font-size: 18px; color: #38bdf8; font-weight: bold; margin-bottom: 6px;">🪟 空域をスキャン中...</div>
+                <div style="font-size: 12px; color: #9ca3af;">最寄り空港のトラフィックを受信すると表示されます</div>
+            </div>
+        </div>
+
+        <div class="right-sidebar">
+            <div class="radar-panel">
+                <div class="radar-title">📡 ターミナルレーダー</div>
+                <div class="radar-screen" id="radar-screen">
+                    <div class="radar-grid-rings"></div>
+                    <div class="radar-line-h"></div>
+                    <div class="radar-line-v"></div>
+                    <div class="radar-sweep"></div>
+                    <div class="radar-center" title="現在地"></div>
+                </div>
+                <div style="font-size: 9px; color: #6b7280; text-align: center; margin-top: 10px;">水色＝現在地 / 黄＝最寄り空港便 / 灰＝通過機</div>
+            </div>
+
+            <div class="other-flights-panel">
+                <div style="font-size: 11px; color: #9ca3af; font-weight: bold; border-bottom: 1px solid #1f2937; padding-bottom: 4px; margin-bottom: 6px;">
+                    ✈ 周辺通過機 近い順 (<span id="other-count">0</span>機)
+                </div>
+                <div id="other-flights-list" style="overflow-y: auto;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        let lat = urlParams.get('lat') || "34.7855";
+        let lon = urlParams.get('lon') || "135.4382";
+        const bearings = urlParams.getAll('b').join(',');
+        
+        document.getElementById('board-lat').value = lat;
+        document.getElementById('board-lon').value = lon;
+
+        setInterval(() => { document.getElementById('clock').innerText = new Date().toTimeString().split(' ')[0]; }, 1000);
+        let lastRoutes = {};
+
+        function updateLocation() {
+            lat = document.getElementById('board-lat').value;
+            lon = document.getElementById('board-lon').value;
+            let newUrl = new URL(window.location);
+            newUrl.searchParams.set('lat', lat);
+            newUrl.searchParams.set('lon', lon);
+            window.history.pushState({}, '', newUrl);
+            update();
+        }
+
+        function getBoardLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition((pos) => {
+                    document.getElementById('board-lat').value = pos.coords.latitude.toFixed(4);
+                    document.getElementById('board-lon').value = pos.coords.longitude.toFixed(4);
+                    updateLocation();
+                }, () => alert("GPSの取得に失敗しました。"));
+            }
+        }
+
+        function renderFlap(text, id) {
+            let padded = text.padEnd(12, ' ').slice(0, 12);
+            let prev = lastRoutes[id] || "";
+            let html = '<div class="splitflap-display">';
+            for (let i = 0; i < padded.length; i++) {
+                let char = padded[i];
+                let cls = (prev[i] !== char) ? 'flip' : '';
+                html += `<div class="flap-char ${cls}">${char === ' ' ? '&nbsp;' : char}</div>`;
+            }
+            html += '</div>';
+            lastRoutes[id] = padded;
+            return html;
+        }
+
+        async function update() {
+            try {
+                let res = await fetch(`/api/flights?lat=${lat}&lon=${lon}&bearings=${bearings}`);
+                let data = await res.json();
+                
+                document.getElementById('board-title').innerText = `${data.apt_code} FLIGHT BOARD`;
+                document.getElementById('provider-status').innerHTML = `BASE: ${data.apt_name}周辺 (対象: ${data.window_flights.length}機)`;
+                
+                if(data.weather) {
+                    document.getElementById('weather-panel').innerHTML = `
+                        <div class="weather-item">☁️ <span>${data.weather.condition}</span></div>
+                        <div class="weather-item">🌡️ <span>${data.weather.temp}℃</span></div>
+                        <div class="weather-item">💧 <span>${data.weather.humidity}%</span></div>
+                        <div class="weather-item">🌬️ <span>${data.weather.wind_dir} ${data.weather.wind_speed}m/s</span></div>
+                    `;
+                }
+
+                let container = document.getElementById('board-container');
+                let radar = document.getElementById('radar-screen');
+                let otherList = document.getElementById('other-flights-list');
+                document.getElementById('other-count').innerText = data.other_flights.length;
+                
+                radar.querySelectorAll('.radar-blip, .radar-label').forEach(b => b.remove());
+
+                const drawBlip = (f, isTarget, isPrimary) => {
+                    let r = Math.min(f.distance * 1.852 / 27.7, 0.90) * 50;
+                    let rad = (f.bearing - 90) * (Math.PI / 180);
+                    let x = 50 + r * Math.cos(rad), y = 50 + r * Math.sin(rad);
+                    
+                    let b = document.createElement('div');
+                    b.className = `radar-blip ${isTarget ? 'tgt' : ''} ${isPrimary ? 'primary' : ''}`;
+                    b.style.left = `${x}%`; b.style.top = `${y}%`;
+                    radar.appendChild(b);
+                    
+                    if(isTarget) {
+                        let l = document.createElement('div');
+                        l.className = 'radar-label'; l.style.left = `${x}%`; l.style.top = `${y}%`;
+                        l.innerHTML = `${f.callsign}<br><span style="color:#fbbf24">${f.alt}ft</span>`;
+                        radar.appendChild(l);
+                    }
+                };
+
+                data.other_flights.forEach(f => drawBlip(f, false, false));
+                data.window_flights.forEach((f, i) => drawBlip(f, true, i === 0));
+
+                if (data.window_flights.length === 0) {
+                    container.innerHTML = `<div class="standby-board"><div style="color:#38bdf8;font-size:18px;font-weight:bold;">🪟 視界内はクリアです</div><div style="color:#9ca3af;font-size:12px;margin-top:6px;">現在、指定方角に${data.apt_name}発着便は見当たりません</div></div>`;
+                } else {
+                    container.innerHTML = data.window_flights.map((f, i) => `
+                        <div class="flap-card ${i === 0 ? 'primary' : ''}">
+                            <div class="top-info">
+                                <div class="flight-phase-badge">${i === 0 ? '★ VISIBLE' : '◆ IN VIEW'} : ${f.phase}${f.is_holding ? ` <span style="color:#f59e0b">[HOLD ${f.age_sec}s]</span>` : ''}</div>
+                                <div style="font-size: 13px; font-weight: bold; color: #9ca3af;">
+                                    <span class="airline-logo" style="background-color: ${f.color};">${f.airline_code}</span>
+                                    <span style="color: #f8fafc;">${f.callsign}</span>
+                                </div>
+                            </div>
+                            <div style="font-size: 9px; color: #6b7280; margin-bottom:4px;">FLIGHT ROUTE</div>
+                            <div>${renderFlap(f.route, `slot_${i}`)}</div>
+                            <div class="details-grid">
+                                <div><div class="detail-label">AIRCRAFT</div><div class="detail-value" style="color:#38bdf8;">${f.model}</div></div>
+                                <div><div class="detail-label">ALTITUDE</div><div class="detail-value">${f.alt} ft</div></div>
+                                <div><div class="detail-label">SPEED/VR</div><div class="detail-value">${f.gs}kt (${f.vr>0?'+':''}${f.vr})</div></div>
+                                <div><div class="detail-label">DIRECTION</div><div class="detail-value" style="color:#fbbf24;">${f.compass} / ${f.distance}km</div></div>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+
+                otherList.innerHTML = data.other_flights.map(f => {
+                    let vrSign = f.vr > 0 ? "▲" : (f.vr < 0 ? "▼" : "―");
+                    let holdBadge = f.is_holding ? ` <span style="color:#f59e0b; font-size:9px;">[HOLD]</span>` : '';
+                    return `
+                    <div class="other-flight-item">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <span class="other-badge" style="background:${f.color};">${f.airline_code}</span> 
+                                <span style="color:#f8fafc;font-weight:bold;">${f.callsign}</span>
+                                <span style="color:#9ca3af;font-size:10px;margin-left:4px;">${f.airline}</span>
+                                ${holdBadge}
+                            </div>
+                            <div style="color:#e2e8f0;font-weight:bold;font-size:10px;">${f.distance}km / ${f.compass}</div>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+                            <div style="color:#38bdf8;font-weight:bold;font-family:monospace;font-size:12px;">✈ ${f.route}</div>
+                            <div style="color:#cbd5e1;font-size:10px;text-align:right;">
+                                ALT: <span style="color:#fbbf24;font-weight:bold;">${f.alt}ft</span> ${vrSign} <br>
+                                SPD: <span style="color:#fbbf24;font-weight:bold;">${f.gs}kt</span>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                }).join('');
+
+            } catch (e) { console.error(e); }
+        }
+        
+        setInterval(update, 3000);
+        update();
+    </script>
+</body>
+</html>

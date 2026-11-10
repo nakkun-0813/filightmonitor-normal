@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Flight Board Setup</title>
+    <style>
+        body { background: #030712; color: #f1f5f9; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: #0b0f19; border: 2px solid #1f2937; padding: 30px; border-radius: 8px; width: 100%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.8); }
+        h2 { color: #38bdf8; text-align: center; margin-top: 0; font-family: monospace;}
+        .input-group { margin-bottom: 15px; }
+        label { display: block; font-size: 13px; color: #9ca3af; margin-bottom: 5px; }
+        input[type="text"] { width: 100%; padding: 10px; background: #020617; border: 1px solid #374151; color: white; border-radius: 4px; box-sizing: border-box; }
+        .btn { width: 100%; padding: 12px; background: #0284c7; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .btn:hover { background: #0369a1; }
+        .btn-gps { background: #059669; margin-bottom: 20px; }
+        .checkbox-group { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 5px; }
+        .checkbox-group label { display: inline-flex; align-items: center; background: #111827; padding: 5px 10px; border-radius: 4px; border: 1px solid #374151; cursor: pointer; font-size: 13px;}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>✈️ Flight Board Setup</h2>
+        <button type="button" class="btn btn-gps" onclick="getLocation()">📍 現在地をGPSで自動取得</button>
+        <form action="/board" method="GET">
+            <div class="input-group">
+                <label>緯度 (Latitude)</label>
+                <input type="text" id="lat" name="lat" value="34.7855" required>
+            </div>
+            <div class="input-group">
+                <label>経度 (Longitude)</label>
+                <input type="text" id="lon" name="lon" value="135.4382" required>
+            </div>
+            <div class="input-group">
+                <label>窓から見える方角 (未選択時は全方位)</label>
+                <div class="checkbox-group">
+                    <label><input type="checkbox" name="b" value="N"> 北</label>
+                    <label><input type="checkbox" name="b" value="NE"> 北東</label>
+                    <label><input type="checkbox" name="b" value="E"> 東</label>
+                    <label><input type="checkbox" name="b" value="SE"> 南東</label>
+                    <label><input type="checkbox" name="b" value="S"> 南</label>
+                    <label><input type="checkbox" name="b" value="SW"> 南西</label>
+                    <label><input type="checkbox" name="b" value="W"> 西</label>
+                    <label><input type="checkbox" name="b" value="NW"> 北西</label>
+                </div>
+            </div>
+            <button type="submit" class="btn">モニターを起動する 🚀</button>
+        </form>
+    </div>
+    <script>
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition((pos) => {
+                    document.getElementById('lat').value = pos.coords.latitude.toFixed(4);
+                    document.getElementById('lon').value = pos.coords.longitude.toFixed(4);
+                }, () => alert("位置情報の取得に失敗しました"));
+            }
+        }
+    </script>
+</body>
+</html>
